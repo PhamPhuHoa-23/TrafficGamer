@@ -165,18 +165,30 @@ class ArgoverseV2Dataset(Dataset):
     def processed_file_names(self) -> Union[str, List[str], Tuple]:
         return self._processed_file_names
 
-    def download(self) -> None:
-        if not os.path.isfile(os.path.join(self.root, f'{self.split}.tar')):
-            print(f'Downloading {self._url}', file=sys.stderr)
-            request.urlretrieve(self._url, os.path.join(self.root, f'{self.split}.tar'))
-        if os.path.isdir(os.path.join(self.root, self.split)):
-            shutil.rmtree(os.path.join(self.root, self.split))
-        if os.path.isdir(self.raw_dir):
-            shutil.rmtree(self.raw_dir)
-        os.makedirs(self.raw_dir)
-        extract_tar(path=os.path.join(self.root, f'{self.split}.tar'), folder=self.raw_dir, mode='r')
-        self._raw_file_names = [name for name in os.listdir(os.path.join(self.raw_dir, self.split)) if
-                                os.path.isdir(os.path.join(self.raw_dir, self.split, name))]
+    def download(self) -> None:  # KAGGLE_PATCHED
+        """Disabled for Kaggle - data should be in input directory."""
+        print("⚠️ Skipping download (Kaggle read-only filesystem)")
+        print(f"⚠️ Expecting data in: {self.root}/{self.split}/")
+        
+        # Try to find raw data in various locations (Kaggle nested structure)
+        possible_paths = [
+            os.path.join(self.root, self.split, self.split),  # train/train/
+            os.path.join(self.root, self.split),               # train/
+            self.raw_dir,                                       # raw/train/
+        ]
+        
+        for path in possible_paths:
+            if os.path.isdir(path):
+                print(f"✅ Found data in: {path}")
+                self._raw_file_names = [name for name in os.listdir(path) if
+                                       os.path.isdir(os.path.join(path, name)) and 
+                                       not name.startswith('.')]
+                if self._raw_file_names:
+                    print(f"✅ Found {len(self._raw_file_names)} scenarios")
+                    return
+        
+        print(f"⚠️ No data found in checked locations")
+        self._raw_file_names = []
         for raw_file_name in self.raw_file_names:
             shutil.move(os.path.join(self.raw_dir, self.split, raw_file_name), self.raw_dir)
         os.rmdir(os.path.join(self.raw_dir, self.split))
