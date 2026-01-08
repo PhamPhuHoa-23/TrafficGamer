@@ -98,17 +98,16 @@ print(f"📂 AV2 Root: {AV2_ROOT}")
 print(f"📦 Checkpoint: {CKPT_PATH}")
 
 # %% [markdown]
-# ## 5. Load và Cache Scenarios
+# ## 5. Load Scenarios (Optimized - No Slow Glob)
 # 
-# **Lưu ý:** Glob rất lâu (~vài phút), nên save vào pkl để dùng lại.
-# - Nếu đã có file pkl glob sẵn → load từ pkl (nhanh)
-# - Nếu chưa có → glob và save pkl
+# **⚡ Optimized:** Dùng cached pkl hoặc direct list (không glob recursive)
+# - Kaggle data structure: `train/train/xxx/scenario_*.parquet`
 
 # %%
 import pickle
 
 # ============================================
-# 🔧 PATHS CHO CACHED SCENARIOS
+# 🔧 PATHS CHO CACHED SCENARIOS (OPTIONAL)
 # ============================================
 # Path đến file pkl đã glob sẵn (nếu có upload lên Kaggle dataset)
 CACHED_SCENARIOS_INPUT = "/kaggle/input/argoverse-glob/av2_scenarios.pkl"
@@ -117,16 +116,16 @@ CACHED_SCENARIOS_INPUT = "/kaggle/input/argoverse-glob/av2_scenarios.pkl"
 CACHED_SCENARIOS_OUTPUT = "av2_scenarios.pkl"
 
 # %%
-def load_or_glob_scenarios(cached_input, cached_output, data_root, split='train'):
+def load_scenarios_fast(cached_input, cached_output, data_root, split='train'):
     """
-    Load scenarios từ cached pkl hoặc glob mới nếu chưa có.
+    Load scenarios - optimized cho Kaggle nested structure.
     
     Priority:
-    1. Load từ cached input (uploaded dataset)
-    2. Load từ cached output (đã glob trước đó trong session)
-    3. Glob mới và save
+    1. Load từ cached pkl (instant)
+    2. Direct list từ known Kaggle structure (fast)
+    3. Skip slow glob!
     """
-    # 1. Try load từ input dataset (đã upload sẵn)
+    # 1. Try load từ cached pkl
     if Path(cached_input).exists():
         print(f"📦 Loading cached scenarios from: {cached_input}")
         with open(cached_input, 'rb') as f:
@@ -134,54 +133,62 @@ def load_or_glob_scenarios(cached_input, cached_output, data_root, split='train'
         print(f"✅ Loaded {len(scenarios)} scenarios (cached)")
         return scenarios
     
-    # 2. Try load từ output (đã glob trong session này)
     if Path(cached_output).exists():
-        print(f"📦 Loading scenarios from: {cached_output}")
+        print(f"📦 Loading from session cache: {cached_output}")
         with open(cached_output, 'rb') as f:
             scenarios = pickle.load(f)
         print(f"✅ Loaded {len(scenarios)} scenarios")
         return scenarios
     
-    # 3. Glob mới (chậm)
-    print("🔍 Globbing scenarios... (this may take a few minutes)")
+    # 2. Direct list từ Kaggle nested structure (FAST!)
+    print(f"📂 Loading scenarios from Kaggle structure...")
     root = Path(data_root)
     
-    # Thử nhiều patterns (Kaggle thường có nested structure)
-    patterns = [
-        f"{split}/{split}/*/scenario_*.parquet",   # Kaggle: train/train/xxx/ ← Try this first!
-        f"{split}/*/scenario_*.parquet",            # Standard: train/xxx/
-        f"**/scenario_*.parquet",                   # Recursive search (fallback)
-    ]
+    # Kaggle nested: train/train/xxx/
+    scenario_base = root / split / split
     
-    scenarios = []
-    for pattern in patterns:
-        print(f"  Trying pattern: {pattern}")
-        found = list(root.glob(pattern))
-        if found:
-            scenarios = found
-            print(f"  ✅ Found {len(scenarios)} scenarios")
-            break
+    if scenario_base.exists():
+        print(f"✅ Found nested structure: {scenario_base}")
+        # List all scenario folders
+        scenario_folders = [d for d in scenario_base.iterdir() if d.is_dir()]
+        scenarios = []
+        
+        for folder in scenario_folders:
+            parquet_files = list(folder.glob("scenario_*.parquet"))
+            scenarios.extend(parquet_files)
+        
+        print(f"✅ Found {len(scenarios)} scenarios (fast list)")
+        
+        # Save để dùng lại
+        print(f"💾 Saving to {cached_output}...")
+        with open(cached_output, 'wb') as f:
+            pickle.dump(scenarios, f)
+        
+        return scenarios
     
-    if not scenarios:
-        print("⚠️ No scenarios found! Listing directory structure:")
-        for item in list(root.iterdir())[:5]:
-            print(f"  - {item}")
-            if item.is_dir():
-                for subitem in list(item.iterdir())[:3]:
-                    print(f"      - {subitem}")
-        return []
+    # Fallback: standard structure
+    print(f"⚠️ Nested structure not found, trying standard: {root / split}")
+    scenario_base = root / split
     
-    # Save để dùng lại
-    print(f"💾 Saving to {cached_output}...")
-    with open(cached_output, 'wb') as f:
-        pickle.dump(scenarios, f)
-    print(f"✅ Saved {len(scenarios)} scenarios")
+    if scenario_base.exists():
+        scenario_folders = [d for d in scenario_base.iterdir() if d.is_dir()]
+        scenarios = []
+        for folder in scenario_folders:
+            parquet_files = list(folder.glob("scenario_*.parquet"))
+            scenarios.extend(parquet_files)
+        
+        if scenarios:
+            print(f"✅ Found {len(scenarios)} scenarios")
+            with open(cached_output, 'wb') as f:
+                pickle.dump(scenarios, f)
+            return scenarios
     
-    return scenarios
+    print("❌ No scenarios found!")
+    return []
 
 # %%
-# Load scenarios
-scenarios = load_or_glob_scenarios(
+# Load scenarios (FAST!)
+scenarios = load_scenarios_fast(
     cached_input=CACHED_SCENARIOS_INPUT,
     cached_output=CACHED_SCENARIOS_OUTPUT,
     data_root=AV2_ROOT,
@@ -493,51 +500,29 @@ if dataset_file.exists():
 else:
     print(f"   ❌ Not found: {dataset_file}")
 
-# ===== PATCH 3: Use raw data directly (skip processed files requirement) =====
-print(f"\n3️⃣ Checking data structure...")
+# ===== PATCH 3: Configure data path for Kaggle nested structure =====
+print(f"\n3️⃣ Configuring data paths...")
 
-# Point val.py to the actual raw data location
+# Kaggle nested structure: /kaggle/input/nek-chua/train/train/xxx/
+# val.py needs root pointing to parent of split folder
+
 input_data_path = Path(AV2_ROOT)
+ACTUAL_SPLIT = "train"  # or "val" depending on your dataset
 
-# Find actual scenario files
-possible_splits = ['train', 'val', 'test']
-found_data = False
-
-for split in possible_splits:
-    # Try different nesting levels
-    for nested_path in [
-        input_data_path / split / split,  # Kaggle: train/train/
-        input_data_path / split,           # Standard: train/
-        input_data_path,                   # Root
-    ]:
-        if nested_path.exists():
-            scenarios = list(nested_path.glob("*/scenario_*.parquet"))
-            if scenarios:
-                print(f"   ✅ Found {len(scenarios)} scenarios in: {nested_path}")
-                print(f"   📍 Split: {split}")
-                found_data = True
-                
-                # Set this as the root for validation
-                ACTUAL_DATA_ROOT = str(nested_path.parent)
-                ACTUAL_SPLIT = split
-                break
-    if found_data:
-        break
-
-if not found_data:
-    print("   ⚠️ No scenario parquet files found!")
-    print("   Listing directory structure:")
-    for item in list(input_data_path.iterdir())[:5]:
-        print(f"      - {item}")
-        if item.is_dir():
-            for sub in list(item.iterdir())[:3]:
-                print(f"         - {sub}")
-    ACTUAL_DATA_ROOT = AV2_ROOT
-    ACTUAL_SPLIT = "train"
-
-print(f"\n📊 Final configuration:")
-print(f"   Data root: {ACTUAL_DATA_ROOT}")
-print(f"   Split: {ACTUAL_SPLIT}")
+# Check if nested structure exists
+nested_check = input_data_path / ACTUAL_SPLIT / ACTUAL_SPLIT
+if nested_check.exists() and list(nested_check.iterdir()):
+    # Nested: root should point to /kaggle/input/nek-chua/train/
+    ACTUAL_DATA_ROOT = str(input_data_path / ACTUAL_SPLIT)
+    print(f"   ✅ Kaggle nested structure detected")
+    print(f"   📍 Data root: {ACTUAL_DATA_ROOT}")
+    print(f"   📍 Split: {ACTUAL_SPLIT}")
+else:
+    # Standard structure
+    ACTUAL_DATA_ROOT = str(input_data_path)
+    print(f"   ✅ Standard structure")
+    print(f"   📍 Data root: {ACTUAL_DATA_ROOT}")
+    print(f"   📍 Split: {ACTUAL_SPLIT}")
 
 # %%
 # Run validation with actual data location
