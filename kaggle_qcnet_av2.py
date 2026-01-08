@@ -447,8 +447,8 @@ if target_builder_file.exists():
         return data
 
     '''
-        if 'def __call__(self' in content:
-            content = content.replace('def __call__(self', patch + 'def __call__(self')
+        if '    def __call__(self' in content:
+            content = content.replace('    def __call__(self', patch + '    def __call__(self')
             target_builder_file.write_text(content)
             print("   ✅ Added forward() method to TargetBuilder")
         else:

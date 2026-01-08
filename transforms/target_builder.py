@@ -26,7 +26,7 @@ class TargetBuilder(BaseTransform):
         self.num_historical_steps = num_historical_steps
         self.num_future_steps = num_future_steps
 
-        def forward(self, data):
+    def forward(self, data):
         """Pass-through implementation for abstract method."""
         return data
 
