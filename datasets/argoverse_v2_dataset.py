@@ -98,25 +98,62 @@ class ArgoverseV2Dataset(Dataset):
             # Kaggle fixed structure: nek-chua/train/train/ or nek-chua/val/val/
             kaggle_nested_dir = os.path.join(root, split, split)
             
-            if os.path.isdir(kaggle_nested_dir):
-                # Kaggle nested structure
-                self._raw_dir = kaggle_nested_dir
-                self._raw_file_names = [name for name in os.listdir(kaggle_nested_dir) 
-                                       if os.path.isdir(os.path.join(kaggle_nested_dir, name)) 
-                                       and not name.startswith('.')]
-                print(f"✅ Found {len(self._raw_file_names)} scenarios in: {kaggle_nested_dir}")
-            else:
-                # Fallback: try standard structure
-                standard_dir = os.path.join(root, split, 'raw')
-                if os.path.isdir(standard_dir):
-                    self._raw_dir = standard_dir
-                    self._raw_file_names = [name for name in os.listdir(standard_dir) 
-                                           if os.path.isdir(os.path.join(standard_dir, name))]
-                    print(f"✅ Found {len(self._raw_file_names)} scenarios in: {standard_dir}")
+            # ===== TRY LOAD FROM PKL CACHE (INSTANT!) =====
+            # Priority 1: Uploaded pkl dataset (e.g., /kaggle/input/scenario-cache/)
+            pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
+            # Priority 2: Working cache (from previous run)
+            pkl_cache = f'/kaggle/working/{split}_scenarios.pkl'
+            
+            loaded_from_pkl = False
+            if os.path.exists(pkl_input):
+                try:
+                    with open(pkl_input, 'rb') as f:
+                        self._raw_file_names = pickle.load(f)
+                    self._raw_dir = kaggle_nested_dir
+                    loaded_from_pkl = True
+                    print(f"📦 Loaded {len(self._raw_file_names)} scenarios from cached pkl: {pkl_input}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load pkl: {e}")
+            
+            if not loaded_from_pkl and os.path.exists(pkl_cache):
+                try:
+                    with open(pkl_cache, 'rb') as f:
+                        self._raw_file_names = pickle.load(f)
+                    self._raw_dir = kaggle_nested_dir
+                    loaded_from_pkl = True
+                    print(f"📦 Loaded {len(self._raw_file_names)} scenarios from session cache: {pkl_cache}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load cache: {e}")
+            
+            # ===== FALLBACK: LIST DIRECTORIES =====
+            if not loaded_from_pkl:
+                if os.path.isdir(kaggle_nested_dir):
+                    # Kaggle nested structure
+                    self._raw_dir = kaggle_nested_dir
+                    self._raw_file_names = [name for name in os.listdir(kaggle_nested_dir) 
+                                           if os.path.isdir(os.path.join(kaggle_nested_dir, name)) 
+                                           and not name.startswith('.')]
+                    print(f"✅ Found {len(self._raw_file_names)} scenarios in: {kaggle_nested_dir}")
+                    
+                    # Save cache for next time
+                    try:
+                        with open(pkl_cache, 'wb') as f:
+                            pickle.dump(self._raw_file_names, f)
+                        print(f"💾 Cached scenario list to: {pkl_cache}")
+                    except Exception as e:
+                        print(f"⚠️ Could not save cache: {e}")
                 else:
-                    self._raw_dir = os.path.join(root, split, 'raw')
-                    self._raw_file_names = []
-                    print(f"⚠️ No scenarios found")
+                    # Fallback: try standard structure
+                    standard_dir = os.path.join(root, split, 'raw')
+                    if os.path.isdir(standard_dir):
+                        self._raw_dir = standard_dir
+                        self._raw_file_names = [name for name in os.listdir(standard_dir) 
+                                               if os.path.isdir(os.path.join(standard_dir, name))]
+                        print(f"✅ Found {len(self._raw_file_names)} scenarios in: {standard_dir}")
+                    else:
+                        self._raw_dir = os.path.join(root, split, 'raw')
+                        self._raw_file_names = []
+                        print(f"⚠️ No scenarios found")
         else:
             raw_dir = os.path.expanduser(os.path.normpath(raw_dir))
             self._raw_dir = raw_dir
