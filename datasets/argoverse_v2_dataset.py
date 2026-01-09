@@ -95,37 +95,28 @@ class ArgoverseV2Dataset(Dataset):
         self.split = split
 
         if raw_dir is None:
-            # Try to detect Kaggle nested structure
-            # If root ends with 'train' or 'val', go up one level for Kaggle structure
-            kaggle_adjusted_root = root
-            if os.path.basename(root) in ('train', 'val', 'test'):
-                kaggle_adjusted_root = os.path.dirname(root)
-                print(f"🔧 Kaggle structure detected, adjusting root: {root} -> {kaggle_adjusted_root}")
+            # Kaggle fixed structure: nek-chua/train/train/ or nek-chua/val/val/
+            kaggle_nested_dir = os.path.join(root, split, split)
             
-            possible_raw_dirs = [
-                os.path.join(kaggle_adjusted_root, split, split),  # Kaggle: nek-chua/val/val/
-                os.path.join(root, split, split),                   # Original nested
-                os.path.join(root, split, 'raw'),                   # Standard: train/raw/
-                os.path.join(root, split),                          # Direct: train/
-            ]
-            
-            self._raw_dir = None
-            self._raw_file_names = []
-            
-            for potential_dir in possible_raw_dirs:
-                if os.path.isdir(potential_dir):
-                    file_names = [name for name in os.listdir(potential_dir) if
-                                 os.path.isdir(os.path.join(potential_dir, name)) and 
-                                 not name.startswith('.')]
-                    if file_names:
-                        self._raw_dir = potential_dir
-                        self._raw_file_names = file_names
-                        print(f"✅ Found {len(file_names)} scenarios in: {potential_dir}")
-                        break
-            
-            # Fallback to standard location if nothing found
-            if self._raw_dir is None:
-                self._raw_dir = os.path.join(root, split, 'raw')
+            if os.path.isdir(kaggle_nested_dir):
+                # Kaggle nested structure
+                self._raw_dir = kaggle_nested_dir
+                self._raw_file_names = [name for name in os.listdir(kaggle_nested_dir) 
+                                       if os.path.isdir(os.path.join(kaggle_nested_dir, name)) 
+                                       and not name.startswith('.')]
+                print(f"✅ Found {len(self._raw_file_names)} scenarios in: {kaggle_nested_dir}")
+            else:
+                # Fallback: try standard structure
+                standard_dir = os.path.join(root, split, 'raw')
+                if os.path.isdir(standard_dir):
+                    self._raw_dir = standard_dir
+                    self._raw_file_names = [name for name in os.listdir(standard_dir) 
+                                           if os.path.isdir(os.path.join(standard_dir, name))]
+                    print(f"✅ Found {len(self._raw_file_names)} scenarios in: {standard_dir}")
+                else:
+                    self._raw_dir = os.path.join(root, split, 'raw')
+                    self._raw_file_names = []
+                    print(f"⚠️ No scenarios found")
         else:
             raw_dir = os.path.expanduser(os.path.normpath(raw_dir))
             self._raw_dir = raw_dir
