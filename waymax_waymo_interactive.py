@@ -156,13 +156,37 @@ print(f"   RL Algorithm: {CONFIG['rl_algorithm']}")
 print(f"   History/Future: {CONFIG['num_historical_steps']}/{CONFIG['num_future_steps']}")
 
 # %% [markdown]
-# ## 6. Authenticate with Google Cloud
+# ## 6. Apply for Waymo Dataset Access (REQUIRED FIRST!)
 #
-# **REQUIRED: Authenticate to access Waymo dataset from GCS**
+# **⚠️ IMPORTANT: You MUST apply for dataset access BEFORE running this notebook!**
+#
+# ### 📝 Steps to get access:
+#
+# 1. **Apply for Waymo Open Dataset access:**
+#    - Go to: https://waymo.com/open/download/
+#    - Click "Register" and fill out the form
+#    - Agree to Terms of Service
+#    - Use your email (or service account email if using Kaggle)
+#
+# 2. **Wait for approval:**
+#    - ⏱️ Usually takes a few hours to 1-2 days
+#    - 📧 You'll receive email confirmation when approved
+#
+# 3. **Then proceed with authentication below**
+#
+# ### 📚 Official documentation:
+# - Waymax: https://github.com/waymo-research/waymax#configure-access-to-waymo-open-motion-dataset
+# - TFDS GCS: https://www.tensorflow.org/datasets/gcs
+
+# %% [markdown]
+# ## 7. Authenticate with Google Cloud
+#
+# **After getting approved, authenticate to access dataset from GCS**
 # 
 # Choose ONE method:
 # - **Colab**: Use `auth.authenticate_user()` (easiest)
-# - **Kaggle/Local**: Use Service Account Key
+# - **Local/VM**: Use `gcloud auth application-default login`
+# - **Kaggle**: Use Service Account Key
 
 # %%
 print("🔑 Authenticating with Google Cloud...")
@@ -174,39 +198,43 @@ try:
     from google.colab import auth
     auth.authenticate_user()
     print("✅ Authenticated via Colab")
+    print("   Make sure your Google account has Waymo dataset access!")
 except ImportError:
     print("⚠️  Not in Colab, trying alternative methods...")
     
     # ============================================
     # METHOD 2: Service Account Key (Kaggle/Local)
     # ============================================
-    # Download service account key from: https://console.cloud.google.com/iam-admin/serviceaccounts
+    # For Kaggle or local environments
     # Steps:
-    # 1. Go to Google Cloud Console
-    # 2. IAM & Admin > Service Accounts
-    # 3. Create service account with "Storage Object Viewer" role
-    # 4. Create JSON key
-    # 5. Upload to Kaggle as dataset or save locally
+    # 1. Apply for Waymo access with service account email
+    # 2. Download JSON key from: https://console.cloud.google.com/iam-admin/serviceaccounts
+    # 3. Upload to Kaggle as dataset or save locally
     
     service_key_path = '/kaggle/input/gcs-credentials/service-account-key.json'  # Change this path
     
     if os.path.exists(service_key_path):
         os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = service_key_path
         print(f"✅ Authenticated via service account: {service_key_path}")
+        print("   Make sure this service account has Waymo dataset access!")
     else:
         print("❌ No authentication found!")
-        print("📝 To authenticate:")
-        print("   1. In Colab: Run the Colab cell above")
-        print("   2. In Kaggle: Upload service account JSON key as dataset")
-        print("   3. Local: Set GOOGLE_APPLICATION_CREDENTIALS env var")
+        print("\n📝 To authenticate:")
+        print("   METHOD A (Local/VM): Run in terminal:")
+        print("      gcloud auth application-default login")
+        print("   METHOD B (Colab): Use auth.authenticate_user() above")
+        print("   METHOD C (Kaggle): Upload service account JSON key")
+        print("\n⚠️  Remember: You must apply for Waymo access first!")
+        print("   Apply at: https://waymo.com/open/download/")
         raise RuntimeError("Authentication required to access Waymo dataset from GCS")
 
 # %% [markdown]
-# ## 7. Load Waymo Dataset with Waymax
+# ## 8. Load Waymo Dataset with Waymax
 #
 # **Waymax streams data from Google Cloud - NO download needed!**
-# - Data streams directly from cloud
+# - Data streams directly from cloud via GCS bucket: `gs://waymo_open_dataset_motion_v_1_2_0/`
 # - 11 historical steps + 80 future steps @ 10Hz (9.1s total)
+# - Requires Waymo dataset access (see Section 6)
 
 # %%
 print("📂 Loading Waymo Motion Dataset with Waymax...")
@@ -239,25 +267,49 @@ print(f"   Data streams from: {dataset_config.path}")
 print(f"   Batch size: {CONFIG['batch_size']}")
 
 # %% [markdown]
-# ## 8. Test Waymax Data Loading
+# ## 9. Test Waymax Data Loading
 
 # %%
 print("🔍 Testing Waymax data loading...")
 
-# Get one scenario
-sample_scenario = next(waymo_iterator)
+# Recreate iterator (in case it was consumed)
+waymo_iterator = waymax_dataloader.simulator_state_generator(dataset_config)
 
-print("✅ Scenario loaded successfully!")
-print("\n📊 Scenario Structure:")
-print(f"   Timesteps: {sample_scenario.num_timesteps}")
-print(f"   Objects: {sample_scenario.num_objects}")
-print(f"   Valid objects: {sample_scenario.object_metadata.is_valid.sum()}")
-
-# Print trajectory shape
-print(f"\n🚗 Trajectory data:")
-print(f"   Position: {sample_scenario.log_trajectory.xy.shape}")
-print(f"   Velocity: {sample_scenario.log_trajectory.vel_x.shape}")
-print(f"   Heading: {sample_scenario.log_trajectory.yaw.shape}")
+try:
+    # Get one scenario
+    sample_scenario = next(waymo_iterator)
+    
+    print("✅ Scenario loaded successfully!")
+    print("\n📊 Scenario Structure:")
+    print(f"   Timesteps: {sample_scenario.num_timesteps}")
+    print(f"   Objects: {sample_scenario.num_objects}")
+    print(f"   Valid objects: {sample_scenario.object_metadata.is_valid.sum()}")
+    
+    # Print trajectory shape
+    print(f"\n🚗 Trajectory data:")
+    print(f"   Position: {sample_scenario.log_trajectory.xy.shape}")
+    print(f"   Velocity: {sample_scenario.log_trajectory.vel_x.shape}")
+    print(f"   Heading: {sample_scenario.log_trajectory.yaw.shape}")
+    
+except StopIteration:
+    print("\n" + "="*60)
+    print("❌ NO DATA FOUND - ACCESS DENIED")
+    print("="*60)
+    print("\n🔒 Your account doesn't have Waymo dataset access yet!")
+    print("\n📝 TO FIX THIS:")
+    print("   1. Apply for access: https://waymo.com/open/download/")
+    print("   2. Use the email you authenticated with (check above)")
+    print("   3. Wait for approval email (usually few hours to 1 day)")
+    print("   4. Re-run this notebook after approval")
+    print("\n💡 Alternative: Use Colab with a Google account that already has access")
+    print("="*60)
+    raise
+except Exception as e:
+    print(f"\n❌ Error loading data: {e}")
+    print("\n🔍 Common issues:")
+    print("   - PermissionDeniedError: Need Waymo dataset access")
+    print("   - Apply at: https://waymo.com/open/download/")
+    raise
 
 # %% [markdown]
 # ## 9. Visualize Waymo Scenario (Optional)
