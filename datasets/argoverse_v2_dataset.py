@@ -89,13 +89,29 @@ class ArgoverseV2Dataset(Dataset):
         self.split = split
 
         if raw_dir is None:
-            raw_dir = os.path.join(root, split, 'raw')
-            self._raw_dir = raw_dir
-            if os.path.isdir(self._raw_dir):
-                self._raw_file_names = [name for name in os.listdir(self._raw_dir) if
-                                        os.path.isdir(os.path.join(self._raw_dir, name))]
-            else:
-                self._raw_file_names = []
+            # Try to detect Kaggle nested structure
+            possible_raw_dirs = [
+                os.path.join(root, split, split),  # Kaggle nested: train/train/
+                os.path.join(root, split, 'raw'),  # Standard: train/raw/
+                os.path.join(root, split),         # Direct: train/
+            ]
+            
+            self._raw_dir = None
+            self._raw_file_names = []
+            
+            for potential_dir in possible_raw_dirs:
+                if os.path.isdir(potential_dir):
+                    file_names = [name for name in os.listdir(potential_dir) if
+                                 os.path.isdir(os.path.join(potential_dir, name)) and 
+                                 not name.startswith('.')]
+                    if file_names:
+                        self._raw_dir = potential_dir
+                        self._raw_file_names = file_names
+                        break
+            
+            # Fallback to standard location if nothing found
+            if self._raw_dir is None:
+                self._raw_dir = os.path.join(root, split, 'raw')
         else:
             raw_dir = os.path.expanduser(os.path.normpath(raw_dir))
             self._raw_dir = raw_dir
@@ -185,13 +201,12 @@ class ArgoverseV2Dataset(Dataset):
                                        not name.startswith('.')]
                 if self._raw_file_names:
                     print(f"✅ Found {len(self._raw_file_names)} scenarios")
+                    # Update raw_dir to point to the actual data location
+                    self._raw_dir = path
                     return
         
         print(f"⚠️ No data found in checked locations")
         self._raw_file_names = []
-        for raw_file_name in self.raw_file_names:
-            shutil.move(os.path.join(self.raw_dir, self.split, raw_file_name), self.raw_dir)
-        os.rmdir(os.path.join(self.raw_dir, self.split))
         print('done')
 
     def process(self) -> None:
