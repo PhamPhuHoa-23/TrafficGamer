@@ -1,9 +1,9 @@
 # %% [markdown]
 # # Waymax + Waymo Motion Dataset - Interactive Training
 #
-# **Interactive notebook** to train policy with Waymax simulator + Waymo Motion Dataset:
-# - Load Waymo Motion Dataset (TFRecord format)
-# - Initialize Waymax simulator
+# **Interactive notebook** to train policy with Waymax simulator:
+# - **NO DOWNLOAD**: Data streams from Google Cloud
+# - **NO QCNet**: Focus on Waymax simulator + RL
 # - Train Policy Network with RL
 # - Visualize and evaluate
 #
@@ -18,8 +18,9 @@
 !pip install -q pytorch-lightning==2.0.0
 !pip install -q torch-geometric
 !pip install -q tensorflow  # For Waymo dataset
-!pip install -q waymax-io  # Waymax simulator
-!pip install -q waymo-open-dataset-tf-2-11-0  # Waymo dataset utilities
+!pip install -q av  # Video encoding (needed by source imports)
+!pip install -q git+https://github.com/waymo-research/waymax.git@main#egg=waymo-waymax  # Waymax simulator
+!pip install -q waymo-open-dataset-tf-2-12-0==1.6.4  # Waymo dataset utilities
 
 # %%
 # Check versions
@@ -86,10 +87,7 @@ print(f"📁 Working directory: {os.getcwd()}")
 # ## 4. Import Modules
 
 # %%
-from predictors.qcnet import QCNet
-from datasets import WaymoDataset
 from transforms import TargetBuilder
-from torch_geometric.loader import DataLoader
 from torch_geometric.data import Batch
 
 # Import RL algorithms
@@ -101,7 +99,7 @@ from algorithm.mappo import MAPPO
 from utils.rollout import PPO_process_batch
 from utils.utils import seed_everything
 
-print("✅ All modules imported successfully")
+print("✅ TrafficGamer modules imported successfully")
 
 # %% [markdown]
 # ## 5. Configuration
@@ -114,9 +112,7 @@ print("✅ All modules imported successfully")
 # ============================================
 
 CONFIG = {
-    # Data paths
-    'data_root': '/kaggle/input/waymo-motion-dataset',  # Waymo dataset root
-    'qcnet_ckpt': '/kaggle/input/qcnet-waymo/QCNet_Waymo.ckpt',  # QCNet checkpoint
+    # Data split
     'split': 'val',  # 'train', 'val', or 'test'
     
     # Dataset settings (Waymo: 11 history + 80 future @ 10Hz)
@@ -126,7 +122,6 @@ CONFIG = {
     # Training settings
     'seed': 42,
     'batch_size': 4,
-    'num_workers': 2,
     'max_epochs': 10,
     
     # RL algorithm
@@ -156,154 +151,75 @@ CONFIG = {
 seed_everything(CONFIG['seed'])
 
 print("✅ Configuration loaded")
-print(f"   Data: {CONFIG['data_root']}")
-print(f"   QCNet checkpoint: {CONFIG['qcnet_ckpt']}")
+print(f"   Split: {CONFIG['split']}")
 print(f"   RL Algorithm: {CONFIG['rl_algorithm']}")
 print(f"   History/Future: {CONFIG['num_historical_steps']}/{CONFIG['num_future_steps']}")
 
 # %% [markdown]
-# ## 6. Load Waymo Dataset
+# ## 6. Load Waymo Dataset with Waymax
 #
-# **Waymo Motion Dataset structure:**
-# - TFRecord format (*.tfrecord-*-of-*)
-# - 11 historical steps + 80 future steps @ 10Hz
-# - Total: 9.1 seconds of motion data
+# **Waymax streams data from Google Cloud - NO download needed!**
+# - Authenticate with `gcloud auth login` first
+# - Data streams directly from cloud
+# - 11 historical steps + 80 future steps @ 10Hz (9.1s total)
 
 # %%
-print("📂 Loading Waymo Motion Dataset...")
+print("📂 Loading Waymo Motion Dataset with Waymax...")
 
-# Load dataset
-dataset = WaymoDataset(
-    root=CONFIG['data_root'],
-    split=CONFIG['split'],
-    transform=TargetBuilder(
-        num_historical_steps=CONFIG['num_historical_steps'],
-        num_future_steps=CONFIG['num_future_steps']
-    ),
-    num_historical_steps=CONFIG['num_historical_steps'],
-    num_future_steps=CONFIG['num_future_steps'],
-    predict_unseen_agents=False,
-    vector_repr=True,
+# Authenticate (if not already done)
+print("💡 Make sure you've run: gcloud auth login")
+print("   Or in Colab: from google.colab import auth; auth.authenticate_user()")
+
+# Import Waymax
+from waymax import config as waymax_config
+from waymax import dataloader as waymax_dataloader
+
+# Stream data from cloud
+if CONFIG['split'] == 'train':
+    dataset_config = waymax_config.WOD_1_1_0_TRAINING
+elif CONFIG['split'] == 'val':
+    dataset_config = waymax_config.WOD_1_1_0_VALIDATION
+else:
+    dataset_config = waymax_config.WOD_1_1_0_TESTING
+
+# Configure
+import dataclasses
+dataset_config = dataclasses.replace(
+    dataset_config,
+    max_num_objects=32,  # Limit objects for memory
+    batch_dims=(CONFIG['batch_size'],),
 )
 
-print(f"✅ Dataset loaded: {len(dataset)} scenarios")
+# Create generator
+waymo_iterator = waymax_dataloader.simulator_state_generator(dataset_config)
 
-# Create dataloader
-dataloader = DataLoader(
-    dataset,
-    batch_size=CONFIG['batch_size'],
-    shuffle=True,
-    num_workers=CONFIG['num_workers'],
-    pin_memory=True
-)
-
-print(f"✅ DataLoader created: {len(dataloader)} batches")
+print(f"✅ Waymax iterator created for {CONFIG['split']} split")
+print(f"   Data streams from: {dataset_config.path}")
+print(f"   Batch size: {CONFIG['batch_size']}")
 
 # %% [markdown]
-# ## 7. Load QCNet (Frozen World Model)
-#
-# **QCNet is FROZEN** - used as world model, not trained!
+# ## 7. Test Waymax Data Loading
 
 # %%
-print("🔥 Loading QCNet (World Model for Waymo)...")
+print("🔍 Testing Waymax data loading...")
 
-# Load pretrained QCNet
-qcnet = QCNet.load_from_checkpoint(CONFIG['qcnet_ckpt'])
-qcnet.eval()
-qcnet = qcnet.to(device)
+# Get one scenario
+sample_scenario = next(waymo_iterator)
 
-# FREEZE all parameters
-for param in qcnet.parameters():
-    param.requires_grad = False
+print("✅ Scenario loaded successfully!")
+print("\n📊 Scenario Structure:")
+print(f"   Timesteps: {sample_scenario.num_timesteps}")
+print(f"   Objects: {sample_scenario.num_objects}")
+print(f"   Valid objects: {sample_scenario.object_metadata.is_valid.sum()}")
 
-print("✅ QCNet loaded and FROZEN")
-print(f"   Total parameters: {sum(p.numel() for p in qcnet.parameters()):,}")
-print(f"   Trainable parameters: {sum(p.numel() for p in qcnet.parameters() if p.requires_grad):,}")
-
-# %% [markdown]
-# ## 8. Test QCNet Inference
-
-# %%
-print("🔍 Testing QCNet inference...")
-
-# Get one batch
-sample_batch = next(iter(dataloader))
-sample_batch = sample_batch.to(device)
-
-# Run QCNet inference
-with torch.no_grad():
-    qcnet_output = qcnet(sample_batch)
-
-print("✅ QCNet inference successful!")
-print("\n📊 QCNet Output Structure:")
-for key, value in qcnet_output.items():
-    if isinstance(value, torch.Tensor):
-        print(f"   {key}: {value.shape}")
-
-# Trajectory predictions
-loc_refine = qcnet_output['loc_refine_pos']  # (batch, num_modes=6, timesteps=80, 2)
-pi = qcnet_output['pi']  # (batch, num_modes=6) - mode probabilities
-
-print(f"\n🎯 Trajectory predictions: {loc_refine.shape}")
-print(f"   - Batch size: {loc_refine.shape[0]}")
-print(f"   - Num modes: {loc_refine.shape[1]}")
-print(f"   - Timesteps: {loc_refine.shape[2]} (Waymo: 80 steps = 8 seconds)")
-print(f"   - Dimensions: {loc_refine.shape[3]} (x, y)")
+# Print trajectory shape
+print(f"\n🚗 Trajectory data:")
+print(f"   Position: {sample_scenario.log_trajectory.xy.shape}")
+print(f"   Velocity: {sample_scenario.log_trajectory.vel_x.shape}")
+print(f"   Heading: {sample_scenario.log_trajectory.yaw.shape}")
 
 # %% [markdown]
-# ## 9. Visualize QCNet Predictions
-
-# %%
-def visualize_qcnet_prediction(data, predictions, agent_idx=0):
-    """Visualize QCNet predictions for one agent."""
-    
-    num_historical = CONFIG['num_historical_steps']
-    num_future = CONFIG['num_future_steps']
-    
-    # Get agent history and future
-    history = data['agent']['position'][agent_idx, :num_historical].cpu().numpy()
-    gt_future = data['agent']['target'][agent_idx, :, :2].cpu().numpy()
-    
-    # Get predictions (6 modes)
-    pred_trajs = predictions['loc_refine_pos'][agent_idx].cpu().numpy()  # (6, 80, 2)
-    pred_probs = torch.softmax(predictions['pi'][agent_idx], dim=-1).cpu().numpy()  # (6,)
-    
-    # Plot
-    fig, ax = plt.subplots(figsize=(12, 10))
-    
-    # History
-    ax.plot(history[:, 0], history[:, 1], 'b-', linewidth=3, label='History (1.1s)', zorder=3)
-    ax.scatter(history[-1, 0], history[-1, 1], c='blue', s=150, zorder=5, marker='o')
-    
-    # Ground truth
-    ax.plot(gt_future[:, 0], gt_future[:, 1], 'g-', linewidth=3, label='Ground Truth (8s)', zorder=3)
-    ax.scatter(gt_future[-1, 0], gt_future[-1, 1], c='green', s=150, zorder=5, marker='*')
-    
-    # Predictions (6 modes)
-    colors = plt.cm.Reds(np.linspace(0.3, 1, 6))
-    for i in range(6):
-        label = f'Mode {i+1} (p={pred_probs[i]:.2f})'
-        ax.plot(pred_trajs[i, :, 0], pred_trajs[i, :, 1], 
-                color=colors[i], linewidth=2, alpha=0.7, label=label, zorder=2)
-    
-    ax.set_xlabel('X (m)', fontsize=12)
-    ax.set_ylabel('Y (m)', fontsize=12)
-    ax.legend(loc='best', fontsize=10)
-    ax.set_title(f'QCNet Predictions (Waymo) - Agent {agent_idx}', fontsize=14, fontweight='bold')
-    ax.axis('equal')
-    ax.grid(True, alpha=0.3)
-    
-    plt.tight_layout()
-    plt.show()
-    
-    return fig
-
-# Visualize first agent
-print("📊 Visualizing QCNet predictions for agent 0...")
-visualize_qcnet_prediction(sample_batch, qcnet_output, agent_idx=0)
-
-# %% [markdown]
-# ## 10. Initialize Policy Network (RL Agent)
+# ## 9. Initialize Policy Network (RL Agent)
 #
 # **Policy network** learns to control AVs via RL
 
@@ -327,8 +243,9 @@ print(f"   Learning rate (actor): {rl_config['LR_ACTOR']}")
 print(f"   Learning rate (critic): {rl_config['LR_CRITIC']}")
 
 # Determine state dimension
-sample_agent_state = sample_batch['agent']['position'][0, -1]
-state_dim = sample_agent_state.shape[0] * 5  # Simplified estimate
+# Extract from Waymax scenario
+sample_agent_pos = sample_scenario.log_trajectory.xy[0, -1]  # (2,)
+state_dim = 10  # Simplified: position(2) + velocity(2) + heading(1) + neighbors(5)
 
 num_agents = len(CONFIG['controlled_agents'])
 
@@ -360,47 +277,58 @@ print(f"   State dim: {state_dim}")
 print(f"   Num controlled agents: {num_agents}")
 print(f"   Trainable parameters: {sum(p.numel() for p in policy_network.parameters() if p.requires_grad):,}")
 
-# %% [markdown]
+# %% [0. Define Training Loop (Waymax Integration)
 # ## 11. Define Training Loop
 
-# %%
-def extract_state_from_batch(batch, agent_indices: List[int]):
-    """Extract state representation for controlled agents."""
+# %%waymax_scenario(scenario, agent_indices: List[int]):
+    """Extract state representation from Waymax scenario."""
+    import jax.numpy as jnp
+    
     states = []
     
     for agent_idx in agent_indices:
         # Agent's own state (last timestep)
-        position = batch['agent']['position'][agent_idx, -1]
-        velocity = batch['agent']['velocity'][agent_idx, -1] if 'velocity' in batch['agent'] else torch.zeros(2, device=device)
-        heading = batch['agent']['heading'][agent_idx, -1] if 'heading' in batch['agent'] else torch.tensor(0.0, device=device)
+        position = scenario.log_trajectory.xy[agent_idx, -1]  # (2,)
+        velocity = jnp.array([
+            scenario.log_trajectory.vel_x[agent_idx, -1],
+            scenario.log_trajectory.vel_y[agent_idx, -1]
+        ])  # (2,)
+        heading = scenario.log_trajectory.yaw[agent_idx, -1]  # scalar
         
-        # Concatenate features
-        agent_state = torch.cat([position, velocity, heading.unsqueeze(0)])
-        states.append(agent_state)
+        # Convert JAX to PyTorch
+        agent_state = np.concatenate([
+            np.array(position),
+            np.array(velocity),
+            np.arrascenario, actions):
+    """Compute reward for RL training from Waymax scenario."""
+    import jax.numpy as jnp
     
-    states = torch.stack(states)
-    return states
-
-
-def compute_reward(batch, actions, qcnet_predictions):
-    """Compute reward for RL training."""
     rewards = []
     costs = []
     
     for agent_idx in CONFIG['controlled_agents']:
-        # Ground truth trajectory
-        gt_future = batch['agent']['target'][agent_idx, :, :2]
-        
-        # Prediction (best mode)
-        pred_traj = qcnet_predictions['loc_refine_pos'][agent_idx, 0]
-        
-        # Reward 1: Progress towards goal
+        # Ground truth trajectory (future)
+        gt_future = scenario.log_trajectory.xy[agent_idx, -CONFIG['num_future_steps']:]
         goal_pos = gt_future[-1]
-        current_pos = batch['agent']['position'][agent_idx, -1, :2]
-        distance_to_goal = torch.norm(goal_pos - current_pos)
-        progress_reward = -distance_to_goal.item()
         
-        # Reward 2: Smooth driving
+        # Current position
+        current_pos = scenario.log_trajectory.xy[agent_idx, -1]
+        distance_to_goal = np.linalg.norm(np.array(goal_pos) - np.array(current_pos))
+        progress_reward = -distance_to_goal
+        
+        # Smoothness penalty
+        action = actions[CONFIG['controlled_agents'].index(agent_idx)]
+        smoothness_penalty = -0.1 * torch.norm(action).item()
+        
+        # Collision cost
+        collision_cost = 0.0
+        for other_idx in range(scenario.num_objects):
+            if other_idx == agent_idx:
+                continue
+            if not scenario.object_metadata.is_valid[other_idx]:
+                continue
+            other_pos = scenario.log_trajectory.xy[other_idx, -1]
+            distance = np.linalg.norm(np.array(current_pos) - np.array(other_pos)
         action = actions[CONFIG['controlled_agents'].index(agent_idx)]
         smoothness_penalty = -0.1 * torch.norm(action).item()
         
@@ -410,19 +338,8 @@ def compute_reward(batch, actions, qcnet_predictions):
             if other_idx == agent_idx:
                 continue
             other_pos = batch['agent']['position'][other_idx, -1, :2]
-            distance = torch.norm(current_pos - other_pos)
-            if distance < CONFIG['distance_limit']:
-                collision_cost += 1.0
-        
-        total_reward = progress_reward + smoothness_penalty
-        rewards.append(total_reward)
-        costs.append(collision_cost)
-    
-    return torch.tensor(rewards, device=device), torch.tensor(costs, device=device)
-
-
-def train_one_epoch(policy_network, qcnet, dataloader, epoch):
-    """Train policy network for one epoch."""
+            distance = torch.norm(cuwaymo_iterator, epoch, num_batches=100):
+    """Train policy network for one epoch with Waymax."""
     
     policy_network.train()
     
@@ -430,17 +347,14 @@ def train_one_epoch(policy_network, qcnet, dataloader, epoch):
     epoch_costs = []
     epoch_losses = []
     
-    pbar = tqdm(dataloader, desc=f"Epoch {epoch+1}/{CONFIG['max_epochs']}")
+    pbar = tqdm(range(num_batches), desc=f"Epoch {epoch+1}/{CONFIG['max_epochs']}")
     
-    for batch_idx, batch in enumerate(pbar):
-        batch = batch.to(device)
-        
-        # Step 1: QCNet predicts (frozen)
-        with torch.no_grad():
-            qcnet_predictions = qcnet(batch)
+    for batch_idx in pbar:
+        # Step 1: Get scenario from Waymax
+        scenario = next(waymo_iterator)
         
         # Step 2: Extract state
-        states = extract_state_from_batch(batch, CONFIG['controlled_agents'])
+        states = extract_state_from_waymax_scenario(scenario, CONFIG['controlled_agents'])
         
         # Step 3: Policy selects actions
         actions, log_probs, values = [], [], []
@@ -448,6 +362,17 @@ def train_one_epoch(policy_network, qcnet, dataloader, epoch):
         for agent_state in states:
             action_mean = policy_network.actor(agent_state.unsqueeze(0))
             action = action_mean + 0.1 * torch.randn_like(action_mean)
+            
+            value = policy_network.critic(agent_state.unsqueeze(0))
+            
+            actions.append(action.squeeze(0))
+            values.append(value)
+        
+        actions = torch.stack(actions)
+        values = torch.stack(values)
+        
+        # Step 4: Compute rewards
+        rewards, costs = compute_reward(scenario, aan)
             
             value = policy_network.critic(agent_state.unsqueeze(0))
             
@@ -498,8 +423,10 @@ print("✅ Training functions defined")
 # %% [markdown]
 # ## 12. Train Policy Network
 
+# %%1. Train Policy Network
+
 # %%
-print("🚀 Starting Policy Network Training...")
+print("🚀 Starting Policy Network Training with Waymax...")
 print(f"   Epochs: {CONFIG['max_epochs']}")
 print(f"   Controlled agents: {CONFIG['controlled_agents']}")
 print(f"   RL Algorithm: {CONFIG['rl_algorithm']}")
@@ -511,9 +438,7 @@ training_history = {
 }
 
 for epoch in range(CONFIG['max_epochs']):
-    metrics = train_one_epoch(policy_network, qcnet, dataloader, epoch)
-    
-    training_history['rewards'].append(metrics['avg_reward'])
+    metrics = train_one_epoch(policy_network, waymo_iterator, epoch, num_batches=100
     training_history['costs'].append(metrics['avg_cost'])
     training_history['losses'].append(metrics['avg_loss'])
     
@@ -539,7 +464,7 @@ print("\n✅ Training completed!")
 # %% [markdown]
 # ## 13. Visualize Training Progress
 
-# %%
+# %%2
 fig, axes = plt.subplots(1, 3, figsize=(18, 5))
 
 # Rewards
@@ -572,24 +497,19 @@ print("📊 Training curves plotted")
 # ## 14. Evaluate Trained Policy
 
 # %%
-def evaluate_policy(policy_network, qcnet, dataloader, num_samples=10):
-    """Evaluate trained policy."""
+def ev3luate_policy(policy_network, waymo_iterator, num_samples=20):
+    """Evaluate trained policy on Waymax scenarios."""
     
     policy_network.eval()
-    qcnet.eval()
     
     eval_rewards = []
     eval_costs = []
     
     with torch.no_grad():
-        for batch_idx, batch in enumerate(tqdm(dataloader, desc="Evaluating")):
-            if batch_idx >= num_samples:
-                break
+        for _ in tqdm(range(num_samples), desc="Evaluating"):
+            scenario = next(waymo_iterator)
             
-            batch = batch.to(device)
-            
-            qcnet_predictions = qcnet(batch)
-            states = extract_state_from_batch(batch, CONFIG['controlled_agents'])
+            states = extract_state_from_waymax_scenario(scenario, CONFIG['controlled_agents'])
             
             actions = []
             for agent_state in states:
@@ -597,7 +517,7 @@ def evaluate_policy(policy_network, qcnet, dataloader, num_samples=10):
                 actions.append(action.squeeze(0))
             
             actions = torch.stack(actions)
-            rewards, costs = compute_reward(batch, actions, qcnet_predictions)
+            rewards, costs = compute_reward(scenario, actions)
             
             eval_rewards.append(rewards.mean().item())
             eval_costs.append(costs.mean().item())
@@ -610,10 +530,10 @@ def evaluate_policy(policy_network, qcnet, dataloader, num_samples=10):
     }
 
 print("🔍 Evaluating trained policy...")
-eval_metrics = evaluate_policy(policy_network, qcnet, dataloader, num_samples=20)
+eval_metrics = evaluate_policy(policy_network, waymo_iterator, num_samples=20)
 
 print("\n" + "="*50)
-print("📊 EVALUATION RESULTS (Waymo)")
+print("📊 EVALUATION RESULTS (Waymo + Waymax)")
 print("="*50)
 print(f"Avg Reward: {eval_metrics['avg_reward']:.3f} ± {eval_metrics['std_reward']:.3f}")
 print(f"Avg Cost:   {eval_metrics['avg_cost']:.3f} ± {eval_metrics['std_cost']:.3f}")
@@ -625,7 +545,7 @@ print("="*50)
 # %%
 final_checkpoint = {
     'config': CONFIG,
-    'rl_config': rl_config,
+    'r4_config': rl_config,
     'policy_state_dict': policy_network.state_dict(),
     'training_history': training_history,
     'final_metrics': eval_metrics
@@ -643,22 +563,23 @@ print(f"✅ Final model saved: {save_path}")
 # **What we did:**
 # 1. ✅ Loaded Waymo Motion Dataset (TFRecord format)
 # 2. ✅ Loaded QCNet (frozen world model for Waymo)
+# 3. ✅5. Summary
+#
+# **What we did:**
+# 1. ✅ Streamed Waymo Motion Dataset from Google Cloud (NO download!)
+# 2. ✅ Used Waymax simulator (JAX-based)
 # 3. ✅ Initialized Policy Network (RL agent)
 # 4. ✅ Trained policy to control AVs
 # 5. ✅ Evaluated on validation set
 # 6. ✅ Visualized results
 #
-# **Key differences from Argoverse 2:**
-# - **Dataset format:** TFRecord (Waymo) vs Parquet (Argoverse 2)
-# - **Timeline:** 11 history + 80 future (Waymo) vs 50 history + 60 future (Argoverse 2)
-# - **Duration:** 9.1 seconds total (Waymo) vs 11 seconds total (Argoverse 2)
-# - **Simulator:** Waymax for Waymo (optional for advanced training)
+# **Key features:**
+# - **NO QCNet dependency** - pure Waymax + RL
+# - **Cloud streaming** - authenticate with `gcloud auth login`
+# - **Timeline:** 11 history + 80 future (Waymo) = 9.1 seconds
+# - **TF 2.12** - matches TrafficGamer source (not 2.11)
+# - **av package** - included for source imports
 #
 # **Next steps:**
-# - Integrate Waymax simulator for more realistic training
-# - Tune hyperparameters
-# - Try different RL algorithms
-# - Add more sophisticated reward shaping
-
-# %% [markdown]
-# ## Done! 🎉
+# - Integrate Waymax dynamics for realistic simulation
+# - Add Waymax metrics (overlap, offroad, etc.)
