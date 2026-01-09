@@ -82,8 +82,14 @@ class ArgoverseV2Dataset(Dataset):
                  predict_unseen_agents: bool = False,
                  vector_repr: bool = True) -> None:
         root = os.path.expanduser(os.path.normpath(root))
+        # Skip directory creation if path is read-only (e.g., Kaggle /kaggle/input/)
         if not os.path.isdir(root):
-            os.makedirs(root)
+            try:
+                os.makedirs(root)
+            except (OSError, PermissionError):
+                # Read-only filesystem (Kaggle), skip creation
+                if not os.path.exists(root):
+                    raise ValueError(f"Root path does not exist and cannot be created: {root}")
         if split not in ('train', 'val', 'test'):
             raise ValueError(f'{split} is not a valid split')
         self.split = split
