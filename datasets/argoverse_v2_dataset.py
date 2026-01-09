@@ -108,7 +108,19 @@ class ArgoverseV2Dataset(Dataset):
             if os.path.exists(pkl_input):
                 try:
                     with open(pkl_input, 'rb') as f:
-                        self._raw_file_names = pickle.load(f)
+                        raw_data = pickle.load(f)
+                    # Normalize: extract scenario names (folder names) from paths
+                    if raw_data and isinstance(raw_data[0], (str, Path)):
+                        # Check if full paths or just names
+                        first_item = str(raw_data[0])
+                        if '/' in first_item or '\\' in first_item:
+                            # Full paths → extract parent folder names
+                            self._raw_file_names = [Path(p).parent.name for p in raw_data]
+                        else:
+                            # Already just names
+                            self._raw_file_names = [str(p) for p in raw_data]
+                    else:
+                        self._raw_file_names = raw_data
                     self._raw_dir = kaggle_nested_dir
                     loaded_from_pkl = True
                     print(f"📦 Loaded {len(self._raw_file_names)} scenarios from cached pkl: {pkl_input}")
@@ -118,7 +130,16 @@ class ArgoverseV2Dataset(Dataset):
             if not loaded_from_pkl and os.path.exists(pkl_cache):
                 try:
                     with open(pkl_cache, 'rb') as f:
-                        self._raw_file_names = pickle.load(f)
+                        raw_data = pickle.load(f)
+                    # Normalize paths
+                    if raw_data and isinstance(raw_data[0], (str, Path)):
+                        first_item = str(raw_data[0])
+                        if '/' in first_item or '\\' in first_item:
+                            self._raw_file_names = [Path(p).parent.name for p in raw_data]
+                        else:
+                            self._raw_file_names = [str(p) for p in raw_data]
+                    else:
+                        self._raw_file_names = raw_data
                     self._raw_dir = kaggle_nested_dir
                     loaded_from_pkl = True
                     print(f"📦 Loaded {len(self._raw_file_names)} scenarios from session cache: {pkl_cache}")
