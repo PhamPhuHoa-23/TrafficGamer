@@ -90,10 +90,17 @@ class ArgoverseV2Dataset(Dataset):
 
         if raw_dir is None:
             # Try to detect Kaggle nested structure
+            # If root ends with 'train' or 'val', go up one level for Kaggle structure
+            kaggle_adjusted_root = root
+            if os.path.basename(root) in ('train', 'val', 'test'):
+                kaggle_adjusted_root = os.path.dirname(root)
+                print(f"🔧 Kaggle structure detected, adjusting root: {root} -> {kaggle_adjusted_root}")
+            
             possible_raw_dirs = [
-                os.path.join(root, split, split),  # Kaggle nested: train/train/
-                os.path.join(root, split, 'raw'),  # Standard: train/raw/
-                os.path.join(root, split),         # Direct: train/
+                os.path.join(kaggle_adjusted_root, split, split),  # Kaggle: nek-chua/val/val/
+                os.path.join(root, split, split),                   # Original nested
+                os.path.join(root, split, 'raw'),                   # Standard: train/raw/
+                os.path.join(root, split),                          # Direct: train/
             ]
             
             self._raw_dir = None
@@ -107,6 +114,7 @@ class ArgoverseV2Dataset(Dataset):
                     if file_names:
                         self._raw_dir = potential_dir
                         self._raw_file_names = file_names
+                        print(f"✅ Found {len(file_names)} scenarios in: {potential_dir}")
                         break
             
             # Fallback to standard location if nothing found
@@ -122,7 +130,13 @@ class ArgoverseV2Dataset(Dataset):
                 self._raw_file_names = []
 
         if processed_dir is None:
-            processed_dir = os.path.join(root, split, 'processed')
+            # For Kaggle read-only filesystem, use /kaggle/working/ for processed files
+            if '/kaggle/input/' in root:
+                processed_dir = f'/kaggle/working/processed_{split}'
+                print(f"🔧 Kaggle read-only input detected, using writable dir: {processed_dir}")
+            else:
+                processed_dir = os.path.join(root, split, 'processed')
+            
             self._processed_dir = processed_dir
             if os.path.isdir(self._processed_dir):
                 self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
@@ -184,18 +198,25 @@ class ArgoverseV2Dataset(Dataset):
     def download(self) -> None:  # KAGGLE_PATCHED
         """Disabled for Kaggle - data should be in input directory."""
         print("⚠️ Skipping download (Kaggle read-only filesystem)")
-        print(f"⚠️ Expecting data in: {self.root}/{self.split}/")
+        
+        # If root ends with train/val/test, adjust for Kaggle structure
+        kaggle_adjusted_root = self.root
+        if os.path.basename(self.root) in ('train', 'val', 'test'):
+            kaggle_adjusted_root = os.path.dirname(self.root)
+        
+        print(f"⚠️ Looking for data in split: {self.split}")
         
         # Try to find raw data in various locations (Kaggle nested structure)
         possible_paths = [
-            os.path.join(self.root, self.split, self.split),  # train/train/
-            os.path.join(self.root, self.split),               # train/
-            self.raw_dir,                                       # raw/train/
+            os.path.join(kaggle_adjusted_root, self.split, self.split),  # nek-chua/val/val/
+            os.path.join(self.root, self.split, self.split),             # train/val/val/
+            os.path.join(self.root, self.split),                         # train/val/
+            self.raw_dir,                                                 # raw_dir
         ]
         
         for path in possible_paths:
             if os.path.isdir(path):
-                print(f"✅ Found data in: {path}")
+                print(f"✅ Found directory: {path}")
                 self._raw_file_names = [name for name in os.listdir(path) if
                                        os.path.isdir(os.path.join(path, name)) and 
                                        not name.startswith('.')]
@@ -205,7 +226,9 @@ class ArgoverseV2Dataset(Dataset):
                     self._raw_dir = path
                     return
         
-        print(f"⚠️ No data found in checked locations")
+        print(f"⚠️ No data found in checked locations:")
+        for path in possible_paths:
+            print(f"   - {path} {'(exists)' if os.path.exists(path) else '(not found)'}")
         self._raw_file_names = []
         print('done')
 
