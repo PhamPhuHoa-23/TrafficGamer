@@ -156,19 +156,60 @@ print(f"   RL Algorithm: {CONFIG['rl_algorithm']}")
 print(f"   History/Future: {CONFIG['num_historical_steps']}/{CONFIG['num_future_steps']}")
 
 # %% [markdown]
-# ## 6. Load Waymo Dataset with Waymax
+# ## 6. Authenticate with Google Cloud
+#
+# **REQUIRED: Authenticate to access Waymo dataset from GCS**
+# 
+# Choose ONE method:
+# - **Colab**: Use `auth.authenticate_user()` (easiest)
+# - **Kaggle/Local**: Use Service Account Key
+
+# %%
+print("🔑 Authenticating with Google Cloud...")
+
+# ============================================
+# METHOD 1: Colab Authentication (EASIEST)
+# ============================================
+try:
+    from google.colab import auth
+    auth.authenticate_user()
+    print("✅ Authenticated via Colab")
+except ImportError:
+    print("⚠️  Not in Colab, trying alternative methods...")
+    
+    # ============================================
+    # METHOD 2: Service Account Key (Kaggle/Local)
+    # ============================================
+    # Download service account key from: https://console.cloud.google.com/iam-admin/serviceaccounts
+    # Steps:
+    # 1. Go to Google Cloud Console
+    # 2. IAM & Admin > Service Accounts
+    # 3. Create service account with "Storage Object Viewer" role
+    # 4. Create JSON key
+    # 5. Upload to Kaggle as dataset or save locally
+    
+    service_key_path = '/kaggle/input/gcs-credentials/service-account-key.json'  # Change this path
+    
+    if os.path.exists(service_key_path):
+        os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = service_key_path
+        print(f"✅ Authenticated via service account: {service_key_path}")
+    else:
+        print("❌ No authentication found!")
+        print("📝 To authenticate:")
+        print("   1. In Colab: Run the Colab cell above")
+        print("   2. In Kaggle: Upload service account JSON key as dataset")
+        print("   3. Local: Set GOOGLE_APPLICATION_CREDENTIALS env var")
+        raise RuntimeError("Authentication required to access Waymo dataset from GCS")
+
+# %% [markdown]
+# ## 7. Load Waymo Dataset with Waymax
 #
 # **Waymax streams data from Google Cloud - NO download needed!**
-# - Authenticate with `gcloud auth login` first
 # - Data streams directly from cloud
 # - 11 historical steps + 80 future steps @ 10Hz (9.1s total)
 
 # %%
 print("📂 Loading Waymo Motion Dataset with Waymax...")
-
-# Authenticate (if not already done)
-print("💡 Make sure you've run: gcloud auth login")
-print("   Or in Colab: from google.colab import auth; auth.authenticate_user()")
 
 # Import Waymax
 from waymax import config as waymax_config
@@ -198,7 +239,7 @@ print(f"   Data streams from: {dataset_config.path}")
 print(f"   Batch size: {CONFIG['batch_size']}")
 
 # %% [markdown]
-# ## 7. Test Waymax Data Loading
+# ## 8. Test Waymax Data Loading
 
 # %%
 print("🔍 Testing Waymax data loading...")
@@ -219,7 +260,32 @@ print(f"   Velocity: {sample_scenario.log_trajectory.vel_x.shape}")
 print(f"   Heading: {sample_scenario.log_trajectory.yaw.shape}")
 
 # %% [markdown]
-# ## 9. Initialize Policy Network (RL Agent)
+# ## 9. Visualize Waymo Scenario (Optional)
+
+# %%
+# Visualize scenario with Waymax
+from waymax import visualization as waymax_viz
+
+try:
+    img = waymax_viz.plot_simulator_state(sample_scenario, use_log_traj=True)
+    
+    # Display
+    try:
+        import mediapy
+        mediapy.show_image(img)
+    except ImportError:
+        plt.figure(figsize=(12, 10))
+        plt.imshow(img)
+        plt.axis('off')
+        plt.title('Waymo Scenario Visualization', fontsize=14, fontweight='bold')
+        plt.show()
+    
+    print("✅ Scenario visualization complete")
+except Exception as e:
+    print(f"⚠️  Visualization skipped: {e}")
+
+# %% [markdown]
+# ## 10. Initialize Policy Network (RL Agent)
 #
 # **Policy network** learns to control AVs via RL
 
@@ -252,8 +318,8 @@ num_agents = len(CONFIG['controlled_agents'])
 # Initialize RL agent
 if CONFIG['rl_algorithm'] == 'TrafficGamer':
     policy_network = TrafficGamer(
-        state_dim=state_dim,
-        agent_number=num_agents,
+      markdown]
+# ## 11. Define Training Loop (Waymax Integration)ts,
         config=rl_config,
         device=device
     )
