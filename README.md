@@ -3,6 +3,33 @@
 This repository is the official implementation of the TrafficGamer.
  [[paper]](https://arxiv.org/abs/2408.15538) [[demo]](https://qiaoguanren.github.io/trafficgamer-demo/)
 
+## 🆕 Kaggle Integration & Pre-Processed Data Support
+
+**NEW**: This repository now supports running on Kaggle with pre-processed data loading!
+
+### Features:
+- ✅ Load pre-processed `.npz` files directly (skip processing)
+- ✅ Incremental processing with checkpoints
+- ✅ Merge multiple processing batches
+- ✅ Optimized for Kaggle read-only filesystem
+
+### Quick Start (Kaggle):
+```python
+# In qcnet_argoverse.py notebook
+PREPROCESSED_INPUT = "/kaggle/input/your-processed-data/processed_data/"
+USE_PREPROCESSED = True
+
+# Run Section 6B to load pre-processed data
+```
+
+📖 **Full Guide**: See [PREPROCESSED_DATA_GUIDE.md](PREPROCESSED_DATA_GUIDE.md)
+
+### Utility Scripts:
+- `merge_processed_batches.py` - Merge multiple processing batches
+- `example_preprocessed_config.py` - Example configurations
+
+---
+
 ## Getting Started
 
 **Step 1**: clone this repository:

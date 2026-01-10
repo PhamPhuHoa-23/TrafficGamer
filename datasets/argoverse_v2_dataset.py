@@ -89,7 +89,8 @@ class ArgoverseV2Dataset(Dataset):
             except (OSError, PermissionError):
                 # Read-only filesystem (Kaggle), skip creation
                 if not os.path.exists(root):
-                    raise ValueError(f"Root path does not exist and cannot be created: {root}")
+                    raise ValueError(
+                        f"Root path does not exist and cannot be created: {root}")
         if split not in ('train', 'val', 'test'):
             raise ValueError(f'{split} is not a valid split')
         self.split = split
@@ -97,13 +98,13 @@ class ArgoverseV2Dataset(Dataset):
         if raw_dir is None:
             # Kaggle fixed structure: nek-chua/train/train/ or nek-chua/val/val/
             kaggle_nested_dir = os.path.join(root, split, split)
-            
+
             # ===== TRY LOAD FROM PKL CACHE (INSTANT!) =====
             # Priority 1: Uploaded pkl dataset (e.g., /kaggle/input/scenario-cache/)
             pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
             # Priority 2: Working cache (from previous run)
             pkl_cache = f'/kaggle/working/{split}_scenarios.pkl'
-            
+
             loaded_from_pkl = False
             if os.path.exists(pkl_input):
                 try:
@@ -115,7 +116,8 @@ class ArgoverseV2Dataset(Dataset):
                         first_item = str(raw_data[0])
                         if '/' in first_item or '\\' in first_item:
                             # Full paths → extract parent folder names
-                            self._raw_file_names = [Path(p).parent.name for p in raw_data]
+                            self._raw_file_names = [
+                                Path(p).parent.name for p in raw_data]
                         else:
                             # Already just names
                             self._raw_file_names = [str(p) for p in raw_data]
@@ -123,10 +125,11 @@ class ArgoverseV2Dataset(Dataset):
                         self._raw_file_names = raw_data
                     self._raw_dir = kaggle_nested_dir
                     loaded_from_pkl = True
-                    print(f"📦 Loaded {len(self._raw_file_names)} scenarios from cached pkl: {pkl_input}")
+                    print(
+                        f"📦 Loaded {len(self._raw_file_names)} scenarios from cached pkl: {pkl_input}")
                 except Exception as e:
                     print(f"⚠️ Failed to load pkl: {e}")
-            
+
             if not loaded_from_pkl and os.path.exists(pkl_cache):
                 try:
                     with open(pkl_cache, 'rb') as f:
@@ -135,27 +138,30 @@ class ArgoverseV2Dataset(Dataset):
                     if raw_data and isinstance(raw_data[0], (str, Path)):
                         first_item = str(raw_data[0])
                         if '/' in first_item or '\\' in first_item:
-                            self._raw_file_names = [Path(p).parent.name for p in raw_data]
+                            self._raw_file_names = [
+                                Path(p).parent.name for p in raw_data]
                         else:
                             self._raw_file_names = [str(p) for p in raw_data]
                     else:
                         self._raw_file_names = raw_data
                     self._raw_dir = kaggle_nested_dir
                     loaded_from_pkl = True
-                    print(f"📦 Loaded {len(self._raw_file_names)} scenarios from session cache: {pkl_cache}")
+                    print(
+                        f"📦 Loaded {len(self._raw_file_names)} scenarios from session cache: {pkl_cache}")
                 except Exception as e:
                     print(f"⚠️ Failed to load cache: {e}")
-            
+
             # ===== FALLBACK: LIST DIRECTORIES =====
             if not loaded_from_pkl:
                 if os.path.isdir(kaggle_nested_dir):
                     # Kaggle nested structure
                     self._raw_dir = kaggle_nested_dir
-                    self._raw_file_names = [name for name in os.listdir(kaggle_nested_dir) 
-                                           if os.path.isdir(os.path.join(kaggle_nested_dir, name)) 
-                                           and not name.startswith('.')]
-                    print(f"✅ Found {len(self._raw_file_names)} scenarios in: {kaggle_nested_dir}")
-                    
+                    self._raw_file_names = [name for name in os.listdir(kaggle_nested_dir)
+                                            if os.path.isdir(os.path.join(kaggle_nested_dir, name))
+                                            and not name.startswith('.')]
+                    print(
+                        f"✅ Found {len(self._raw_file_names)} scenarios in: {kaggle_nested_dir}")
+
                     # Save cache for next time
                     try:
                         with open(pkl_cache, 'wb') as f:
@@ -168,9 +174,10 @@ class ArgoverseV2Dataset(Dataset):
                     standard_dir = os.path.join(root, split, 'raw')
                     if os.path.isdir(standard_dir):
                         self._raw_dir = standard_dir
-                        self._raw_file_names = [name for name in os.listdir(standard_dir) 
-                                               if os.path.isdir(os.path.join(standard_dir, name))]
-                        print(f"✅ Found {len(self._raw_file_names)} scenarios in: {standard_dir}")
+                        self._raw_file_names = [name for name in os.listdir(standard_dir)
+                                                if os.path.isdir(os.path.join(standard_dir, name))]
+                        print(
+                            f"✅ Found {len(self._raw_file_names)} scenarios in: {standard_dir}")
                     else:
                         self._raw_dir = os.path.join(root, split, 'raw')
                         self._raw_file_names = []
@@ -188,15 +195,16 @@ class ArgoverseV2Dataset(Dataset):
             # For Kaggle read-only filesystem, use /kaggle/working/ for processed files
             if '/kaggle/input/' in root:
                 processed_dir = f'/kaggle/working/processed_{split}'
-                print(f"🔧 Kaggle read-only input detected, using writable dir: {processed_dir}")
+                print(
+                    f"🔧 Kaggle read-only input detected, using writable dir: {processed_dir}")
             else:
                 processed_dir = os.path.join(root, split, 'processed')
-            
+
             self._processed_dir = processed_dir
             if os.path.isdir(self._processed_dir):
                 self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
                                               os.path.isfile(os.path.join(self._processed_dir, name)) and
-                                              name.endswith(('pkl', 'pickle'))]
+                                              name.endswith(('pkl', 'pickle', 'npz'))]
             else:
                 self._processed_file_names = []
         else:
@@ -205,7 +213,7 @@ class ArgoverseV2Dataset(Dataset):
             if os.path.isdir(self._processed_dir):
                 self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
                                               os.path.isfile(os.path.join(self._processed_dir, name)) and
-                                              name.endswith(('pkl', 'pickle'))]
+                                              name.endswith(('pkl', 'pickle', 'npz'))]
             else:
                 self._processed_file_names = []
 
@@ -223,7 +231,8 @@ class ArgoverseV2Dataset(Dataset):
         }[split]
         self._agent_types = ['vehicle', 'pedestrian', 'motorcyclist', 'cyclist', 'bus', 'static', 'background',
                              'construction', 'riderless_bicycle', 'unknown']
-        self._agent_categories = ['TRACK_FRAGMENT', 'UNSCORED_TRACK', 'SCORED_TRACK', 'FOCAL_TRACK']
+        self._agent_categories = ['TRACK_FRAGMENT',
+                                  'UNSCORED_TRACK', 'SCORED_TRACK', 'FOCAL_TRACK']
         self._polygon_types = ['VEHICLE', 'BIKE', 'BUS', 'PEDESTRIAN']
         self._polygon_is_intersections = [True, False, None]
         self._point_types = ['DASH_SOLID_YELLOW', 'DASH_SOLID_WHITE', 'DASHED_WHITE', 'DASHED_YELLOW',
@@ -231,8 +240,10 @@ class ArgoverseV2Dataset(Dataset):
                              'SOLID_YELLOW', 'SOLID_WHITE', 'SOLID_DASH_WHITE', 'SOLID_DASH_YELLOW', 'SOLID_BLUE',
                              'NONE', 'UNKNOWN', 'CROSSWALK', 'CENTERLINE']
         self._point_sides = ['LEFT', 'RIGHT', 'CENTER']
-        self._polygon_to_polygon_types = ['NONE', 'PRED', 'SUCC', 'LEFT', 'RIGHT']
-        super(ArgoverseV2Dataset, self).__init__(root=root, transform=transform, pre_transform=None, pre_filter=None)
+        self._polygon_to_polygon_types = [
+            'NONE', 'PRED', 'SUCC', 'LEFT', 'RIGHT']
+        super(ArgoverseV2Dataset, self).__init__(
+            root=root, transform=transform, pre_transform=None, pre_filter=None)
 
     @property
     def raw_dir(self) -> str:
@@ -253,45 +264,51 @@ class ArgoverseV2Dataset(Dataset):
     def download(self) -> None:  # KAGGLE_PATCHED
         """Disabled for Kaggle - data should be in input directory."""
         print("⚠️ Skipping download (Kaggle read-only filesystem)")
-        
+
         # If root ends with train/val/test, adjust for Kaggle structure
         kaggle_adjusted_root = self.root
         if os.path.basename(self.root) in ('train', 'val', 'test'):
             kaggle_adjusted_root = os.path.dirname(self.root)
-        
+
         print(f"⚠️ Looking for data in split: {self.split}")
-        
+
         # Try to find raw data in various locations (Kaggle nested structure)
         possible_paths = [
-            os.path.join(kaggle_adjusted_root, self.split, self.split),  # nek-chua/val/val/
-            os.path.join(self.root, self.split, self.split),             # train/val/val/
-            os.path.join(self.root, self.split),                         # train/val/
+            os.path.join(kaggle_adjusted_root, self.split,
+                         self.split),  # nek-chua/val/val/
+            # train/val/val/
+            os.path.join(self.root, self.split, self.split),
+            # train/val/
+            os.path.join(self.root, self.split),
             self.raw_dir,                                                 # raw_dir
         ]
-        
+
         for path in possible_paths:
             if os.path.isdir(path):
                 print(f"✅ Found directory: {path}")
                 self._raw_file_names = [name for name in os.listdir(path) if
-                                       os.path.isdir(os.path.join(path, name)) and 
-                                       not name.startswith('.')]
+                                        os.path.isdir(os.path.join(path, name)) and
+                                        not name.startswith('.')]
                 if self._raw_file_names:
                     print(f"✅ Found {len(self._raw_file_names)} scenarios")
                     # Update raw_dir to point to the actual data location
                     self._raw_dir = path
                     return
-        
+
         print(f"⚠️ No data found in checked locations:")
         for path in possible_paths:
-            print(f"   - {path} {'(exists)' if os.path.exists(path) else '(not found)'}")
+            print(
+                f"   - {path} {'(exists)' if os.path.exists(path) else '(not found)'}")
         self._raw_file_names = []
         print('done')
 
     def process(self) -> None:
         for raw_file_name in tqdm(self.raw_file_names):
-            df = pd.read_parquet(os.path.join(self.raw_dir, raw_file_name, f'scenario_{raw_file_name}.parquet'))
+            df = pd.read_parquet(os.path.join(
+                self.raw_dir, raw_file_name, f'scenario_{raw_file_name}.parquet'))
             map_dir = Path(self.raw_dir) / raw_file_name
-            map_path = map_dir / sorted(map_dir.glob('log_map_archive_*.json'))[0]
+            map_path = map_dir / \
+                sorted(map_dir.glob('log_map_archive_*.json'))[0]
             map_data = read_json_file(map_path)
             centerlines = {lane_segment['id']: Polyline.from_json_data(lane_segment['centerline'])
                            for lane_segment in map_data['lane_segments'].values()}
@@ -326,37 +343,43 @@ class ArgoverseV2Dataset(Dataset):
         # initialization
         valid_mask = torch.zeros(num_agents, self.num_steps, dtype=torch.bool)
         current_valid_mask = torch.zeros(num_agents, dtype=torch.bool)
-        predict_mask = torch.zeros(num_agents, self.num_steps, dtype=torch.bool)
+        predict_mask = torch.zeros(
+            num_agents, self.num_steps, dtype=torch.bool)
         agent_id: List[Optional[str]] = [None] * num_agents
         agent_type = torch.zeros(num_agents, dtype=torch.uint8)
         agent_category = torch.zeros(num_agents, dtype=torch.uint8)
-        position = torch.zeros(num_agents, self.num_steps, self.dim, dtype=torch.float)
+        position = torch.zeros(num_agents, self.num_steps,
+                               self.dim, dtype=torch.float)
         heading = torch.zeros(num_agents, self.num_steps, dtype=torch.float)
-        velocity = torch.zeros(num_agents, self.num_steps, self.dim, dtype=torch.float)
+        velocity = torch.zeros(num_agents, self.num_steps,
+                               self.dim, dtype=torch.float)
 
         for track_id, track_df in df.groupby('track_id'):
             agent_idx = agent_ids.index(track_id)
             agent_steps = track_df['timestep'].values
 
             valid_mask[agent_idx, agent_steps] = True
-            current_valid_mask[agent_idx] = valid_mask[agent_idx, self.num_historical_steps - 1]
+            current_valid_mask[agent_idx] = valid_mask[agent_idx,
+                                                       self.num_historical_steps - 1]
             predict_mask[agent_idx, agent_steps] = True
             if self.vector_repr:  # a time step t is valid only when both t and t-1 are valid
                 valid_mask[agent_idx, 1: self.num_historical_steps] = (
-                        valid_mask[agent_idx, :self.num_historical_steps - 1] &
-                        valid_mask[agent_idx, 1: self.num_historical_steps])
+                    valid_mask[agent_idx, :self.num_historical_steps - 1] &
+                    valid_mask[agent_idx, 1: self.num_historical_steps])
                 valid_mask[agent_idx, 0] = False
             predict_mask[agent_idx, :self.num_historical_steps] = False
             if not current_valid_mask[agent_idx]:
                 predict_mask[agent_idx, self.num_historical_steps:] = False
 
             agent_id[agent_idx] = track_id
-            agent_type[agent_idx] = self._agent_types.index(track_df['object_type'].values[0])
+            agent_type[agent_idx] = self._agent_types.index(
+                track_df['object_type'].values[0])
             agent_category[agent_idx] = track_df['object_category'].values[0]
             position[agent_idx, agent_steps, :2] = torch.from_numpy(np.stack([track_df['position_x'].values,
                                                                               track_df['position_y'].values],
                                                                              axis=-1)).float()
-            heading[agent_idx, agent_steps] = torch.from_numpy(track_df['heading'].values).float()
+            heading[agent_idx, agent_steps] = torch.from_numpy(
+                track_df['heading'].values).float()
             velocity[agent_idx, agent_steps, :2] = torch.from_numpy(np.stack([track_df['velocity_x'].values,
                                                                               track_df['velocity_y'].values],
                                                                              axis=-1)).float()
@@ -388,7 +411,8 @@ class ArgoverseV2Dataset(Dataset):
         num_polygons = len(lane_segment_ids) + len(cross_walk_ids) * 2
 
         # initialization
-        polygon_position = torch.zeros(num_polygons, self.dim, dtype=torch.float)
+        polygon_position = torch.zeros(
+            num_polygons, self.dim, dtype=torch.float)
         polygon_orientation = torch.zeros(num_polygons, dtype=torch.float)
         polygon_height = torch.zeros(num_polygons, dtype=torch.float)
         polygon_type = torch.zeros(num_polygons, dtype=torch.uint8)
@@ -402,25 +426,32 @@ class ArgoverseV2Dataset(Dataset):
 
         for lane_segment in map_api.get_scenario_lane_segments():
             lane_segment_idx = polygon_ids.index(lane_segment.id)
-            centerline = torch.from_numpy(centerlines[lane_segment.id].xyz).float()
+            centerline = torch.from_numpy(
+                centerlines[lane_segment.id].xyz).float()
             polygon_position[lane_segment_idx] = centerline[0, :self.dim]
             polygon_orientation[lane_segment_idx] = torch.atan2(centerline[1, 1] - centerline[0, 1],
                                                                 centerline[1, 0] - centerline[0, 0])
-            polygon_height[lane_segment_idx] = centerline[1, 2] - centerline[0, 2]
-            polygon_type[lane_segment_idx] = self._polygon_types.index(lane_segment.lane_type.value)
+            polygon_height[lane_segment_idx] = centerline[1,
+                                                          2] - centerline[0, 2]
+            polygon_type[lane_segment_idx] = self._polygon_types.index(
+                lane_segment.lane_type.value)
             polygon_is_intersection[lane_segment_idx] = self._polygon_is_intersections.index(
                 lane_segment.is_intersection)
 
-            left_boundary = torch.from_numpy(lane_segment.left_lane_boundary.xyz).float()
-            right_boundary = torch.from_numpy(lane_segment.right_lane_boundary.xyz).float()
+            left_boundary = torch.from_numpy(
+                lane_segment.left_lane_boundary.xyz).float()
+            right_boundary = torch.from_numpy(
+                lane_segment.right_lane_boundary.xyz).float()
             point_position[lane_segment_idx] = torch.cat([left_boundary[:-1, :self.dim],
-                                                          right_boundary[:-1, :self.dim],
+                                                          right_boundary[:-
+                                                                         1, :self.dim],
                                                           centerline[:-1, :self.dim]], dim=0)
             left_vectors = left_boundary[1:] - left_boundary[:-1]
             right_vectors = right_boundary[1:] - right_boundary[:-1]
             center_vectors = centerline[1:] - centerline[:-1]
             point_orientation[lane_segment_idx] = torch.cat([torch.atan2(left_vectors[:, 1], left_vectors[:, 0]),
-                                                             torch.atan2(right_vectors[:, 1], right_vectors[:, 0]),
+                                                             torch.atan2(
+                                                                 right_vectors[:, 1], right_vectors[:, 0]),
                                                              torch.atan2(center_vectors[:, 1], center_vectors[:, 0])],
                                                             dim=0)
             point_magnitude[lane_segment_idx] = torch.norm(torch.cat([left_vectors[:, :2],
@@ -428,16 +459,20 @@ class ArgoverseV2Dataset(Dataset):
                                                                       center_vectors[:, :2]], dim=0), p=2, dim=-1)
             point_height[lane_segment_idx] = torch.cat([left_vectors[:, 2], right_vectors[:, 2], center_vectors[:, 2]],
                                                        dim=0)
-            left_type = self._point_types.index(lane_segment.left_mark_type.value)
-            right_type = self._point_types.index(lane_segment.right_mark_type.value)
+            left_type = self._point_types.index(
+                lane_segment.left_mark_type.value)
+            right_type = self._point_types.index(
+                lane_segment.right_mark_type.value)
             center_type = self._point_types.index('CENTERLINE')
             point_type[lane_segment_idx] = torch.cat(
                 [torch.full((len(left_vectors),), left_type, dtype=torch.uint8),
-                 torch.full((len(right_vectors),), right_type, dtype=torch.uint8),
+                 torch.full((len(right_vectors),),
+                            right_type, dtype=torch.uint8),
                  torch.full((len(center_vectors),), center_type, dtype=torch.uint8)], dim=0)
             point_side[lane_segment_idx] = torch.cat(
                 [torch.full((len(left_vectors),), self._point_sides.index('LEFT'), dtype=torch.uint8),
-                 torch.full((len(right_vectors),), self._point_sides.index('RIGHT'), dtype=torch.uint8),
+                 torch.full((len(right_vectors),), self._point_sides.index(
+                     'RIGHT'), dtype=torch.uint8),
                  torch.full((len(center_vectors),), self._point_sides.index('CENTER'), dtype=torch.uint8)], dim=0)
 
         for crosswalk in map_api.get_scenario_ped_crossings():
@@ -447,17 +482,23 @@ class ArgoverseV2Dataset(Dataset):
             start_position = (edge1[0] + edge2[0]) / 2
             end_position = (edge1[-1] + edge2[-1]) / 2
             polygon_position[crosswalk_idx] = start_position[:self.dim]
-            polygon_position[crosswalk_idx + len(cross_walk_ids)] = end_position[:self.dim]
+            polygon_position[crosswalk_idx +
+                             len(cross_walk_ids)] = end_position[:self.dim]
             polygon_orientation[crosswalk_idx] = torch.atan2((end_position - start_position)[1],
                                                              (end_position - start_position)[0])
             polygon_orientation[crosswalk_idx + len(cross_walk_ids)] = torch.atan2((start_position - end_position)[1],
                                                                                    (start_position - end_position)[0])
             polygon_height[crosswalk_idx] = end_position[2] - start_position[2]
-            polygon_height[crosswalk_idx + len(cross_walk_ids)] = start_position[2] - end_position[2]
-            polygon_type[crosswalk_idx] = self._polygon_types.index('PEDESTRIAN')
-            polygon_type[crosswalk_idx + len(cross_walk_ids)] = self._polygon_types.index('PEDESTRIAN')
-            polygon_is_intersection[crosswalk_idx] = self._polygon_is_intersections.index(None)
-            polygon_is_intersection[crosswalk_idx + len(cross_walk_ids)] = self._polygon_is_intersections.index(None)
+            polygon_height[crosswalk_idx +
+                           len(cross_walk_ids)] = start_position[2] - end_position[2]
+            polygon_type[crosswalk_idx] = self._polygon_types.index(
+                'PEDESTRIAN')
+            polygon_type[crosswalk_idx +
+                         len(cross_walk_ids)] = self._polygon_types.index('PEDESTRIAN')
+            polygon_is_intersection[crosswalk_idx] = self._polygon_is_intersections.index(
+                None)
+            polygon_is_intersection[crosswalk_idx +
+                                    len(cross_walk_ids)] = self._polygon_is_intersections.index(None)
 
             if side_to_directed_lineseg((edge1[0] + edge1[-1]) / 2, start_position, end_position) == 'LEFT':
                 left_boundary = edge1
@@ -465,14 +506,16 @@ class ArgoverseV2Dataset(Dataset):
             else:
                 left_boundary = edge2
                 right_boundary = edge1
-            num_centerline_points = math.ceil(torch.norm(end_position - start_position, p=2, dim=-1).item() / 2.0) + 1
+            num_centerline_points = math.ceil(torch.norm(
+                end_position - start_position, p=2, dim=-1).item() / 2.0) + 1
             centerline = torch.from_numpy(
                 compute_midpoint_line(left_ln_boundary=left_boundary.numpy(),
                                       right_ln_boundary=right_boundary.numpy(),
                                       num_interp_pts=int(num_centerline_points))[0]).float()
 
             point_position[crosswalk_idx] = torch.cat([left_boundary[:-1, :self.dim],
-                                                       right_boundary[:-1, :self.dim],
+                                                       right_boundary[:-
+                                                                      1, :self.dim],
                                                        centerline[:-1, :self.dim]], dim=0)
             point_position[crosswalk_idx + len(cross_walk_ids)] = torch.cat(
                 [right_boundary.flip(dims=[0])[:-1, :self.dim],
@@ -487,7 +530,8 @@ class ArgoverseV2Dataset(Dataset):
                  torch.atan2(center_vectors[:, 1], center_vectors[:, 0])], dim=0)
             point_orientation[crosswalk_idx + len(cross_walk_ids)] = torch.cat(
                 [torch.atan2(-right_vectors.flip(dims=[0])[:, 1], -right_vectors.flip(dims=[0])[:, 0]),
-                 torch.atan2(-left_vectors.flip(dims=[0])[:, 1], -left_vectors.flip(dims=[0])[:, 0]),
+                 torch.atan2(-left_vectors.flip(dims=[0])
+                             [:, 1], -left_vectors.flip(dims=[0])[:, 0]),
                  torch.atan2(-center_vectors.flip(dims=[0])[:, 1], -center_vectors.flip(dims=[0])[:, 0])], dim=0)
             point_magnitude[crosswalk_idx] = torch.norm(torch.cat([left_vectors[:, :2],
                                                                    right_vectors[:, :2],
@@ -505,23 +549,29 @@ class ArgoverseV2Dataset(Dataset):
             crosswalk_type = self._point_types.index('CROSSWALK')
             center_type = self._point_types.index('CENTERLINE')
             point_type[crosswalk_idx] = torch.cat([
-                torch.full((len(left_vectors),), crosswalk_type, dtype=torch.uint8),
-                torch.full((len(right_vectors),), crosswalk_type, dtype=torch.uint8),
+                torch.full((len(left_vectors),),
+                           crosswalk_type, dtype=torch.uint8),
+                torch.full((len(right_vectors),),
+                           crosswalk_type, dtype=torch.uint8),
                 torch.full((len(center_vectors),), center_type, dtype=torch.uint8)], dim=0)
             point_type[crosswalk_idx + len(cross_walk_ids)] = torch.cat(
                 [torch.full((len(right_vectors),), crosswalk_type, dtype=torch.uint8),
-                 torch.full((len(left_vectors),), crosswalk_type, dtype=torch.uint8),
+                 torch.full((len(left_vectors),),
+                            crosswalk_type, dtype=torch.uint8),
                  torch.full((len(center_vectors),), center_type, dtype=torch.uint8)], dim=0)
             point_side[crosswalk_idx] = torch.cat(
                 [torch.full((len(left_vectors),), self._point_sides.index('LEFT'), dtype=torch.uint8),
-                 torch.full((len(right_vectors),), self._point_sides.index('RIGHT'), dtype=torch.uint8),
+                 torch.full((len(right_vectors),), self._point_sides.index(
+                     'RIGHT'), dtype=torch.uint8),
                  torch.full((len(center_vectors),), self._point_sides.index('CENTER'), dtype=torch.uint8)], dim=0)
             point_side[crosswalk_idx + len(cross_walk_ids)] = torch.cat(
                 [torch.full((len(right_vectors),), self._point_sides.index('LEFT'), dtype=torch.uint8),
-                 torch.full((len(left_vectors),), self._point_sides.index('RIGHT'), dtype=torch.uint8),
+                 torch.full((len(left_vectors),), self._point_sides.index(
+                     'RIGHT'), dtype=torch.uint8),
                  torch.full((len(center_vectors),), self._point_sides.index('CENTER'), dtype=torch.uint8)], dim=0)
 
-        num_points = torch.tensor([point.size(0) for point in point_position], dtype=torch.long)
+        num_points = torch.tensor([point.size(0)
+                                  for point in point_position], dtype=torch.long)
         point_to_polygon_edge_index = torch.stack(
             [torch.arange(num_points.sum(), dtype=torch.long),
              torch.arange(num_polygons, dtype=torch.long).repeat_interleave(num_points)], dim=0)
@@ -552,24 +602,28 @@ class ArgoverseV2Dataset(Dataset):
                 polygon_to_polygon_type.append(
                     torch.full((len(succ_inds),), self._polygon_to_polygon_types.index('SUCC'), dtype=torch.uint8))
             if lane_segment.left_neighbor_id is not None:
-                left_idx = safe_list_index(polygon_ids, lane_segment.left_neighbor_id)
+                left_idx = safe_list_index(
+                    polygon_ids, lane_segment.left_neighbor_id)
                 if left_idx is not None:
                     polygon_to_polygon_edge_index.append(
                         torch.tensor([[left_idx], [lane_segment_idx]], dtype=torch.long))
                     polygon_to_polygon_type.append(
                         torch.tensor([self._polygon_to_polygon_types.index('LEFT')], dtype=torch.uint8))
             if lane_segment.right_neighbor_id is not None:
-                right_idx = safe_list_index(polygon_ids, lane_segment.right_neighbor_id)
+                right_idx = safe_list_index(
+                    polygon_ids, lane_segment.right_neighbor_id)
                 if right_idx is not None:
                     polygon_to_polygon_edge_index.append(
                         torch.tensor([[right_idx], [lane_segment_idx]], dtype=torch.long))
                     polygon_to_polygon_type.append(
                         torch.tensor([self._polygon_to_polygon_types.index('RIGHT')], dtype=torch.uint8))
         if len(polygon_to_polygon_edge_index) != 0:
-            polygon_to_polygon_edge_index = torch.cat(polygon_to_polygon_edge_index, dim=1)
+            polygon_to_polygon_edge_index = torch.cat(
+                polygon_to_polygon_edge_index, dim=1)
             polygon_to_polygon_type = torch.cat(polygon_to_polygon_type, dim=0)
         else:
-            polygon_to_polygon_edge_index = torch.tensor([[], []], dtype=torch.long)
+            polygon_to_polygon_edge_index = torch.tensor(
+                [[], []], dtype=torch.long)
             polygon_to_polygon_type = torch.tensor([], dtype=torch.uint8)
 
         map_data = {
@@ -587,25 +641,36 @@ class ArgoverseV2Dataset(Dataset):
         map_data['map_polygon']['is_intersection'] = polygon_is_intersection
         if len(num_points) == 0:
             map_data['map_point']['num_nodes'] = 0
-            map_data['map_point']['position'] = torch.tensor([], dtype=torch.float)
-            map_data['map_point']['orientation'] = torch.tensor([], dtype=torch.float)
-            map_data['map_point']['magnitude'] = torch.tensor([], dtype=torch.float)
+            map_data['map_point']['position'] = torch.tensor(
+                [], dtype=torch.float)
+            map_data['map_point']['orientation'] = torch.tensor(
+                [], dtype=torch.float)
+            map_data['map_point']['magnitude'] = torch.tensor(
+                [], dtype=torch.float)
             if self.dim == 3:
-                map_data['map_point']['height'] = torch.tensor([], dtype=torch.float)
+                map_data['map_point']['height'] = torch.tensor(
+                    [], dtype=torch.float)
             map_data['map_point']['type'] = torch.tensor([], dtype=torch.uint8)
             map_data['map_point']['side'] = torch.tensor([], dtype=torch.uint8)
         else:
             map_data['map_point']['num_nodes'] = num_points.sum().item()
-            map_data['map_point']['position'] = torch.cat(point_position, dim=0)
-            map_data['map_point']['orientation'] = torch.cat(point_orientation, dim=0)
-            map_data['map_point']['magnitude'] = torch.cat(point_magnitude, dim=0)
+            map_data['map_point']['position'] = torch.cat(
+                point_position, dim=0)
+            map_data['map_point']['orientation'] = torch.cat(
+                point_orientation, dim=0)
+            map_data['map_point']['magnitude'] = torch.cat(
+                point_magnitude, dim=0)
             if self.dim == 3:
-                map_data['map_point']['height'] = torch.cat(point_height, dim=0)
+                map_data['map_point']['height'] = torch.cat(
+                    point_height, dim=0)
             map_data['map_point']['type'] = torch.cat(point_type, dim=0)
             map_data['map_point']['side'] = torch.cat(point_side, dim=0)
-        map_data['map_point', 'to', 'map_polygon']['edge_index'] = point_to_polygon_edge_index
-        map_data['map_polygon', 'to', 'map_polygon']['edge_index'] = polygon_to_polygon_edge_index
-        map_data['map_polygon', 'to', 'map_polygon']['type'] = polygon_to_polygon_type
+        map_data['map_point', 'to',
+                 'map_polygon']['edge_index'] = point_to_polygon_edge_index
+        map_data['map_polygon', 'to',
+                 'map_polygon']['edge_index'] = polygon_to_polygon_edge_index
+        map_data['map_polygon', 'to',
+                 'map_polygon']['type'] = polygon_to_polygon_type
 
         return map_data
 
@@ -613,8 +678,72 @@ class ArgoverseV2Dataset(Dataset):
         return self._num_samples
 
     def get(self, idx: int) -> HeteroData:
-        with open(self.processed_paths[idx], 'rb') as handle:
+        file_path = self.processed_paths[idx]
+        
+        # Handle .npz files (pre-processed without map data)
+        if file_path.endswith('.npz'):
+            return self._load_from_npz(file_path)
+        
+        # Handle .pkl files (standard format)
+        with open(file_path, 'rb') as handle:
             return HeteroData(pickle.load(handle))
+    
+    def _load_from_npz(self, npz_path: str) -> HeteroData:
+        """Load pre-processed .npz file and convert to HeteroData format."""
+        data = np.load(npz_path)
+        agent_hist = data['agent_hist']  # (50, 5) - [x, y, vx, vy, heading]
+        gt_future = data['gt_future']    # (60, 2) - [x, y]
+        
+        # Reconstruct minimal data dict
+        scenario_id = Path(npz_path).stem
+        
+        # Combine history + future
+        num_steps = self.num_historical_steps + self.num_future_steps
+        position = torch.zeros(1, num_steps, 2)
+        heading = torch.zeros(1, num_steps)
+        velocity = torch.zeros(1, num_steps, 2)
+        valid_mask = torch.zeros(1, num_steps, dtype=torch.bool)
+        
+        # Fill history
+        position[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, :2])
+        velocity[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, 2:4])
+        heading[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, 4])
+        valid_mask[0, :self.num_historical_steps] = True
+        
+        # Fill future (if available)
+        if len(gt_future) > 0:
+            future_len = min(len(gt_future), self.num_future_steps)
+            position[0, self.num_historical_steps:self.num_historical_steps+future_len] = torch.from_numpy(gt_future[:future_len])
+            valid_mask[0, self.num_historical_steps:self.num_historical_steps+future_len] = True
+        
+        # Create HeteroData with minimal required fields
+        hetero_data = HeteroData()
+        
+        # Agent data
+        hetero_data['agent']['id'] = torch.tensor([0], dtype=torch.long)  # Focal agent
+        hetero_data['agent']['type'] = torch.tensor([0], dtype=torch.uint8)  # Vehicle
+        hetero_data['agent']['category'] = torch.tensor([3], dtype=torch.uint8)  # FOCAL_TRACK
+        hetero_data['agent']['position'] = position
+        hetero_data['agent']['heading'] = heading
+        hetero_data['agent']['velocity'] = velocity
+        hetero_data['agent']['valid_mask'] = valid_mask
+        hetero_data['agent']['predict_mask'] = valid_mask[:, self.num_historical_steps:]
+        hetero_data['agent']['num_nodes'] = 1
+        
+        # Empty map data (not available in .npz)
+        hetero_data['map_polygon']['num_nodes'] = 0
+        hetero_data['map_point']['num_nodes'] = 0
+        
+        # Metadata
+        hetero_data['scenario_id'] = scenario_id
+        hetero_data['city'] = 'unknown'
+        hetero_data['origin'] = position[0, self.num_historical_steps - 1].clone()
+        hetero_data['theta'] = heading[0, self.num_historical_steps - 1].clone()
+        hetero_data['av_index'] = 0
+        hetero_data['agent_index'] = 0
+        hetero_data['num_nodes'] = 1
+        
+        return hetero_data
 
     def _download(self) -> None:
         # if complete raw/processed files exist, skip downloading
@@ -627,6 +756,10 @@ class ArgoverseV2Dataset(Dataset):
     def _process(self) -> None:
         # if complete processed files exist, skip processing
         if os.path.isdir(self.processed_dir) and len(self.processed_file_names) == len(self):
+            # Check if we have .npz files (pre-processed)
+            npz_files = [f for f in self.processed_file_names if f.endswith('.npz')]
+            if npz_files:
+                print(f'✅ Found {len(npz_files)} pre-processed .npz files, skipping processing', file=sys.stderr)
             return
         print('Processing...', file=sys.stderr)
         if os.path.isdir(self.processed_dir):
@@ -635,6 +768,7 @@ class ArgoverseV2Dataset(Dataset):
                     os.remove(os.path.join(self.processed_dir, name))
         else:
             os.makedirs(self.processed_dir)
-        self._processed_file_names = [f'{raw_file_name}.pkl' for raw_file_name in self.raw_file_names]
+        self._processed_file_names = [
+            f'{raw_file_name}.pkl' for raw_file_name in self.raw_file_names]
         self.process()
         print('Done!', file=sys.stderr)
