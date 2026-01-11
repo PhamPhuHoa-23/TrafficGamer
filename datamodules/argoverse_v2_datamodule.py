@@ -63,15 +63,24 @@ class ArgoverseV2DataModule(pl.LightningDataModule):
     def prepare_data(self) -> None:
         ArgoverseV2Dataset(self.root, 'train', self.train_raw_dir, self.train_processed_dir, self.train_transform)
         ArgoverseV2Dataset(self.root, 'val', self.val_raw_dir, self.val_processed_dir, self.val_transform)
-        ArgoverseV2Dataset(self.root, 'test', self.test_raw_dir, self.test_processed_dir, self.test_transform)
+        # Test dataset is optional
+        try:
+            ArgoverseV2Dataset(self.root, 'test', self.test_raw_dir, self.test_processed_dir, self.test_transform)
+        except Exception as e:
+            print(f"⚠️ Test dataset not available: {e}")
 
     def setup(self, stage: Optional[str] = None) -> None:
         self.train_dataset = ArgoverseV2Dataset(self.root, 'train', self.train_raw_dir, self.train_processed_dir,
                                                 self.train_transform)
         self.val_dataset = ArgoverseV2Dataset(self.root, 'val', self.val_raw_dir, self.val_processed_dir,
                                               self.val_transform)
-        self.test_dataset = ArgoverseV2Dataset(self.root, 'test', self.test_raw_dir, self.test_processed_dir,
-                                               self.test_transform)
+        # Test dataset is optional
+        try:
+            self.test_dataset = ArgoverseV2Dataset(self.root, 'test', self.test_raw_dir, self.test_processed_dir,
+                                                   self.test_transform)
+        except Exception as e:
+            print(f"⚠️ Test dataset not available: {e}")
+            self.test_dataset = None
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.train_batch_size, shuffle=self.shuffle,
