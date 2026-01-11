@@ -201,21 +201,86 @@ class ArgoverseV2Dataset(Dataset):
                 processed_dir = os.path.join(root, split, 'processed')
 
             self._processed_dir = processed_dir
-            if os.path.isdir(self._processed_dir):
-                self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
-                                              os.path.isfile(os.path.join(self._processed_dir, name)) and
-                                              name.endswith(('pkl', 'pickle', 'npz'))]
-            else:
-                self._processed_file_names = []
+            # ===== TRY LOAD FROM PKL CACHE (INSTANT!) =====
+            pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
+            pkl_cache = f'/kaggle/working/{split}_scenarios.pkl'
+            
+            loaded_from_pkl = False
+            if os.path.exists(pkl_input):
+                try:
+                    with open(pkl_input, 'rb') as f:
+                        raw_data = pickle.load(f)
+                    # Convert scenario names to processed file names
+                    if raw_data and isinstance(raw_data[0], (str, Path)):
+                        first_item = str(raw_data[0])
+                        if '/' in first_item or '\\' in first_item:
+                            # Full paths → extract scenario names
+                            scenario_names = [Path(p).parent.name for p in raw_data]
+                        else:
+                            # Already scenario names
+                            scenario_names = [str(p) for p in raw_data]
+                        # Convert to .npz file names
+                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        loaded_from_pkl = True
+                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load pkl cache: {e}")
+            
+            if not loaded_from_pkl and os.path.exists(pkl_cache):
+                try:
+                    with open(pkl_cache, 'rb') as f:
+                        raw_data = pickle.load(f)
+                    if raw_data and isinstance(raw_data[0], (str, Path)):
+                        first_item = str(raw_data[0])
+                        if '/' in first_item or '\\' in first_item:
+                            scenario_names = [Path(p).parent.name for p in raw_data]
+                        else:
+                            scenario_names = [str(p) for p in raw_data]
+                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        loaded_from_pkl = True
+                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from session cache: {pkl_cache}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load cache: {e}")
+            
+            # Fallback: list directory (SLOW!)
+            if not loaded_from_pkl:
+                if os.path.isdir(self._processed_dir):
+                    self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
+                                                  os.path.isfile(os.path.join(self._processed_dir, name)) and
+                                                  name.endswith(('pkl', 'pickle', 'npz'))]
+                    print(f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
+                else:
+                    self._processed_file_names = []
         else:
             processed_dir = os.path.expanduser(os.path.normpath(processed_dir))
             self._processed_dir = processed_dir
-            if os.path.isdir(self._processed_dir):
-                self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
-                                              os.path.isfile(os.path.join(self._processed_dir, name)) and
-                                              name.endswith(('pkl', 'pickle', 'npz'))]
-            else:
-                self._processed_file_names = []
+            # Also try cache for custom processed_dir
+            pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
+            loaded_from_pkl = False
+            if os.path.exists(pkl_input):
+                try:
+                    with open(pkl_input, 'rb') as f:
+                        raw_data = pickle.load(f)
+                    if raw_data and isinstance(raw_data[0], (str, Path)):
+                        first_item = str(raw_data[0])
+                        if '/' in first_item or '\\' in first_item:
+                            scenario_names = [Path(p).parent.name for p in raw_data]
+                        else:
+                            scenario_names = [str(p) for p in raw_data]
+                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        loaded_from_pkl = True
+                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
+                except Exception as e:
+                    print(f"⚠️ Failed to load pkl cache: {e}")
+            
+            if not loaded_from_pkl:
+                if os.path.isdir(self._processed_dir):
+                    self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
+                                                  os.path.isfile(os.path.join(self._processed_dir, name)) and
+                                                  name.endswith(('pkl', 'pickle', 'npz'))]
+                    print(f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
+                else:
+                    self._processed_file_names = []
 
         self.dim = dim
         self.num_historical_steps = num_historical_steps
