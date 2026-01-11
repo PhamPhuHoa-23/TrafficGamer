@@ -204,7 +204,7 @@ class ArgoverseV2Dataset(Dataset):
             # ===== TRY LOAD FROM PKL CACHE (INSTANT!) =====
             pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
             pkl_cache = f'/kaggle/working/{split}_scenarios.pkl'
-            
+
             loaded_from_pkl = False
             if os.path.exists(pkl_input):
                 try:
@@ -215,17 +215,20 @@ class ArgoverseV2Dataset(Dataset):
                         first_item = str(raw_data[0])
                         if '/' in first_item or '\\' in first_item:
                             # Full paths → extract scenario names
-                            scenario_names = [Path(p).parent.name for p in raw_data]
+                            scenario_names = [
+                                Path(p).parent.name for p in raw_data]
                         else:
                             # Already scenario names
                             scenario_names = [str(p) for p in raw_data]
                         # Convert to .npz file names
-                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        self._processed_file_names = [
+                            f"{name}.npz" for name in scenario_names]
                         loaded_from_pkl = True
-                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
+                        print(
+                            f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
                 except Exception as e:
                     print(f"⚠️ Failed to load pkl cache: {e}")
-            
+
             if not loaded_from_pkl and os.path.exists(pkl_cache):
                 try:
                     with open(pkl_cache, 'rb') as f:
@@ -233,30 +236,37 @@ class ArgoverseV2Dataset(Dataset):
                     if raw_data and isinstance(raw_data[0], (str, Path)):
                         first_item = str(raw_data[0])
                         if '/' in first_item or '\\' in first_item:
-                            scenario_names = [Path(p).parent.name for p in raw_data]
+                            scenario_names = [
+                                Path(p).parent.name for p in raw_data]
                         else:
                             scenario_names = [str(p) for p in raw_data]
-                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        self._processed_file_names = [
+                            f"{name}.npz" for name in scenario_names]
                         loaded_from_pkl = True
-                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from session cache: {pkl_cache}")
+                        print(
+                            f"📦 Loaded {len(self._processed_file_names)} processed files from session cache: {pkl_cache}")
                 except Exception as e:
                     print(f"⚠️ Failed to load cache: {e}")
-            
+
             # Fallback: list directory (SLOW!)
             if not loaded_from_pkl:
                 if os.path.isdir(self._processed_dir):
                     self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
                                                   os.path.isfile(os.path.join(self._processed_dir, name)) and
                                                   name.endswith(('pkl', 'pickle', 'npz'))]
-                    print(f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
+                    print(
+                        f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
                 else:
                     self._processed_file_names = []
         else:
             processed_dir = os.path.expanduser(os.path.normpath(processed_dir))
             self._processed_dir = processed_dir
-            # Also try cache for custom processed_dir
-            pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
+            
+            # Try multiple cache locations for custom processed_dir
             loaded_from_pkl = False
+            
+            # Option 1: Hardcoded Kaggle input location
+            pkl_input = f'/kaggle/input/argoverse-glob/{split}_scenarios.pkl'
             if os.path.exists(pkl_input):
                 try:
                     with open(pkl_input, 'rb') as f:
@@ -264,21 +274,47 @@ class ArgoverseV2Dataset(Dataset):
                     if raw_data and isinstance(raw_data[0], (str, Path)):
                         first_item = str(raw_data[0])
                         if '/' in first_item or '\\' in first_item:
-                            scenario_names = [Path(p).parent.name for p in raw_data]
+                            scenario_names = [
+                                Path(p).parent.name for p in raw_data]
                         else:
                             scenario_names = [str(p) for p in raw_data]
-                        self._processed_file_names = [f"{name}.npz" for name in scenario_names]
+                        self._processed_file_names = [
+                            f"{name}.npz" for name in scenario_names]
                         loaded_from_pkl = True
-                        print(f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
+                        print(
+                            f"📦 Loaded {len(self._processed_file_names)} processed files from cache: {pkl_input}")
                 except Exception as e:
-                    print(f"⚠️ Failed to load pkl cache: {e}")
+                    print(f"⚠️ Failed to load pkl cache from {pkl_input}: {e}")
             
+            # Option 2: Cache in same directory as processed data
+            if not loaded_from_pkl:
+                pkl_cache = os.path.join(self._processed_dir, f'cache_{split}.pkl')
+                if os.path.exists(pkl_cache):
+                    try:
+                        with open(pkl_cache, 'rb') as f:
+                            raw_data = pickle.load(f)
+                        if raw_data and isinstance(raw_data[0], (str, Path)):
+                            first_item = str(raw_data[0])
+                            if '/' in first_item or '\\' in first_item:
+                                scenario_names = [
+                                    Path(p).parent.name for p in raw_data]
+                            else:
+                                scenario_names = [str(p) for p in raw_data]
+                            self._processed_file_names = [
+                                f"{name}.npz" for name in scenario_names]
+                            loaded_from_pkl = True
+                            print(
+                                f"📦 Loaded {len(self._processed_file_names)} processed files from session cache: {pkl_cache}")
+                    except Exception as e:
+                        print(f"⚠️ Failed to load cache from {pkl_cache}: {e}")
+
             if not loaded_from_pkl:
                 if os.path.isdir(self._processed_dir):
                     self._processed_file_names = [name for name in os.listdir(self._processed_dir) if
                                                   os.path.isfile(os.path.join(self._processed_dir, name)) and
                                                   name.endswith(('pkl', 'pickle', 'npz'))]
-                    print(f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
+                    print(
+                        f"⚠️ Listing {len(self._processed_file_names)} processed files from directory (SLOW!)")
                 else:
                     self._processed_file_names = []
 
@@ -744,70 +780,80 @@ class ArgoverseV2Dataset(Dataset):
 
     def get(self, idx: int) -> HeteroData:
         file_path = self.processed_paths[idx]
-        
+
         # Handle .npz files (pre-processed without map data)
         if file_path.endswith('.npz'):
             return self._load_from_npz(file_path)
-        
+
         # Handle .pkl files (standard format)
         with open(file_path, 'rb') as handle:
             return HeteroData(pickle.load(handle))
-    
+
     def _load_from_npz(self, npz_path: str) -> HeteroData:
         """Load pre-processed .npz file and convert to HeteroData format."""
         data = np.load(npz_path)
         agent_hist = data['agent_hist']  # (50, 5) - [x, y, vx, vy, heading]
         gt_future = data['gt_future']    # (60, 2) - [x, y]
-        
+
         # Reconstruct minimal data dict
         scenario_id = Path(npz_path).stem
-        
+
         # Combine history + future
         num_steps = self.num_historical_steps + self.num_future_steps
         position = torch.zeros(1, num_steps, 2)
         heading = torch.zeros(1, num_steps)
         velocity = torch.zeros(1, num_steps, 2)
         valid_mask = torch.zeros(1, num_steps, dtype=torch.bool)
-        
+
         # Fill history
-        position[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, :2])
-        velocity[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, 2:4])
-        heading[0, :self.num_historical_steps] = torch.from_numpy(agent_hist[:, 4])
+        position[0, :self.num_historical_steps] = torch.from_numpy(
+            agent_hist[:, :2])
+        velocity[0, :self.num_historical_steps] = torch.from_numpy(
+            agent_hist[:, 2:4])
+        heading[0, :self.num_historical_steps] = torch.from_numpy(
+            agent_hist[:, 4])
         valid_mask[0, :self.num_historical_steps] = True
-        
+
         # Fill future (if available)
         if len(gt_future) > 0:
             future_len = min(len(gt_future), self.num_future_steps)
-            position[0, self.num_historical_steps:self.num_historical_steps+future_len] = torch.from_numpy(gt_future[:future_len])
+            position[0, self.num_historical_steps:self.num_historical_steps +
+                     future_len] = torch.from_numpy(gt_future[:future_len])
             valid_mask[0, self.num_historical_steps:self.num_historical_steps+future_len] = True
-        
+
         # Create HeteroData with minimal required fields
         hetero_data = HeteroData()
-        
+
         # Agent data
-        hetero_data['agent']['id'] = torch.tensor([0], dtype=torch.long)  # Focal agent
-        hetero_data['agent']['type'] = torch.tensor([0], dtype=torch.uint8)  # Vehicle
-        hetero_data['agent']['category'] = torch.tensor([3], dtype=torch.uint8)  # FOCAL_TRACK
+        hetero_data['agent']['id'] = torch.tensor(
+            [0], dtype=torch.long)  # Focal agent
+        hetero_data['agent']['type'] = torch.tensor(
+            [0], dtype=torch.uint8)  # Vehicle
+        hetero_data['agent']['category'] = torch.tensor(
+            [3], dtype=torch.uint8)  # FOCAL_TRACK
         hetero_data['agent']['position'] = position
         hetero_data['agent']['heading'] = heading
         hetero_data['agent']['velocity'] = velocity
         hetero_data['agent']['valid_mask'] = valid_mask
-        hetero_data['agent']['predict_mask'] = valid_mask[:, self.num_historical_steps:]
+        hetero_data['agent']['predict_mask'] = valid_mask[:,
+                                                          self.num_historical_steps:]
         hetero_data['agent']['num_nodes'] = 1
-        
+
         # Empty map data (not available in .npz)
         hetero_data['map_polygon']['num_nodes'] = 0
         hetero_data['map_point']['num_nodes'] = 0
-        
+
         # Metadata
         hetero_data['scenario_id'] = scenario_id
         hetero_data['city'] = 'unknown'
-        hetero_data['origin'] = position[0, self.num_historical_steps - 1].clone()
-        hetero_data['theta'] = heading[0, self.num_historical_steps - 1].clone()
+        hetero_data['origin'] = position[0,
+                                         self.num_historical_steps - 1].clone()
+        hetero_data['theta'] = heading[0,
+                                       self.num_historical_steps - 1].clone()
         hetero_data['av_index'] = 0
         hetero_data['agent_index'] = 0
         hetero_data['num_nodes'] = 1
-        
+
         return hetero_data
 
     def _download(self) -> None:
@@ -822,9 +868,11 @@ class ArgoverseV2Dataset(Dataset):
         # if complete processed files exist, skip processing
         if os.path.isdir(self.processed_dir) and len(self.processed_file_names) == len(self):
             # Check if we have .npz files (pre-processed)
-            npz_files = [f for f in self.processed_file_names if f.endswith('.npz')]
+            npz_files = [
+                f for f in self.processed_file_names if f.endswith('.npz')]
             if npz_files:
-                print(f'✅ Found {len(npz_files)} pre-processed .npz files, skipping processing', file=sys.stderr)
+                print(
+                    f'✅ Found {len(npz_files)} pre-processed .npz files, skipping processing', file=sys.stderr)
             return
         print('Processing...', file=sys.stderr)
         if os.path.isdir(self.processed_dir):
