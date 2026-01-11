@@ -168,7 +168,9 @@ class QCNet(pl.LightningModule):
                       data,
                       batch_idx):
         if isinstance(data, Batch):
-            data['agent']['av_index'] += data['agent']['ptr'][:-1]
+            # av_index may not exist in preprocessed .npz files
+            if 'av_index' in data['agent']:
+                data['agent']['av_index'] += data['agent']['ptr'][:-1]
         if self.dataset == 'waymo':
             data['agent']['predict_mask'] = data['agent']['predict_mask'] & data['agent']['target_mask'].unsqueeze(1)
         reg_mask = data['agent']['predict_mask'][:, self.num_historical_steps:]
@@ -232,7 +234,9 @@ class QCNet(pl.LightningModule):
         # data=add_new_agent(new_input_data,0.3, v0_x, v0_y, -1.2, 5185, 153)
         # data=data.cuda()
         if isinstance(data, Batch):
-            data['agent']['av_index'] += data['agent']['ptr'][:-1]
+            # av_index may not exist in preprocessed .npz files
+            if 'av_index' in data['agent']:
+                data['agent']['av_index'] += data['agent']['ptr'][:-1]
         if self.dataset == 'waymo':
             data['agent']['predict_mask'] = data['agent']['predict_mask'] & data['agent']['target_mask'].unsqueeze(1)
         reg_mask = data['agent']['predict_mask'][:, self.num_historical_steps:]
@@ -335,7 +339,9 @@ class QCNet(pl.LightningModule):
                   data,
                   batch_idx):
         if isinstance(data, Batch):
-            data['agent']['av_index'] += data['agent']['ptr'][:-1]
+            # av_index may not exist in preprocessed .npz files
+            if 'av_index' in data['agent']:
+                data['agent']['av_index'] += data['agent']['ptr'][:-1]
         pred = self(data)
         if self.output_head:
             traj_refine = torch.cat([pred['loc_refine_pos'][..., :self.output_dim],
